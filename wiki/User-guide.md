@@ -19,6 +19,12 @@
 - The green line under the name means the assistant is answering for that tab.
 - When you close CorbolPrompt the tabs are remembered: they come back when you reopen it, each in its folder (running commands do not).
 
+## Tabs side by side
+The **▦** button in the top bar (or **Ctrl+Shift+G**, or **⋯ → Show all tabs side by side**) shows all tabs together, in a grid of panes: 2 side by side, 4 in 2×2, and so on (the last row may have wider panes).
+- **Drag the borders between panes** to resize them; each shell gets the new size.
+- Each pane has a bar with its name at the top: the **green** one is the active tab, which the assistant and favorites work on. Click a pane to make it active; double-click the bar to rename, right-click for the tab menu.
+- New tabs join the grid, closed ones leave it. Press **▦** again to go back to one tab at a time; the choice is remembered.
+
 ## The terminal
 It is a real terminal, like Windows Terminal: the shells run in the Windows virtual console (ConPTY). Colors (16, 256 and 24-bit), full-screen programs like `vi`, `less`, `htop` or `edit`, accented characters and emoji all work.
 
@@ -33,7 +39,13 @@ It is a real terminal, like Windows Terminal: the shells run in the Windows virt
 
 In full-screen programs (less, man, vim) the mouse wheel sends the up and down arrows.
 
-### The terminal's right-click menu
+### Tabs side by side
+The **▦** button in the top bar (or **Ctrl+Shift+G**, or **⋯ → Show all tabs side by side**) shows all tabs together, in a grid of panes: 2 side by side, 4 in 2×2, and so on (the last row may have wider panes).
+- **Drag the borders between panes** to resize them; each shell gets the new size.
+- Each pane has a bar with its name at the top: the **green** one is the active tab, which the assistant and favorites work on. Click a pane to make it active; double-click the bar to rename, right-click for the tab menu.
+- New tabs join the grid, closed ones leave it. Press **▦** again to go back to one tab at a time; the choice is remembered.
+
+## The terminal's right-click menu
 *Copy*, *Paste*, *Select all*, *Add to favorites...* (with text selected), *Explain the selection / the screen with the assistant*, *Ask the assistant...*, *Clear the screen history*.
 
 ## The assistant
@@ -93,6 +105,7 @@ A small interpreted Common Lisp, with system commands: see the [[Lisp guide|Lisp
 | Ctrl+V, Ctrl+Shift+V | paste |
 | Ctrl+Shift+A | assistant |
 | Ctrl+Shift+P | favorites |
+| Ctrl+Shift+G | tabs side by side / one at a time |
 | Ctrl+F1 | this guide |
 | Shift+PgUp / PgDn | scroll the screen history |
 | Ctrl++ / Ctrl+- / Ctrl+0 | text size |

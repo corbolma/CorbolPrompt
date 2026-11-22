@@ -19,6 +19,12 @@
 - La linea verde sotto il nome indica che l'assistente sta rispondendo per quella scheda.
 - Chiudendo CorbolPrompt le schede vengono ricordate: alla riapertura tornano, ognuna nella sua cartella (i comandi in corso no).
 
+## Schede affiancate
+Il pulsante **▦** nella barra in alto (o **Ctrl+Maiusc+G**, o **⋯ → Affianca tutte le schede**) mostra tutte le schede insieme, in una griglia di riquadri: 2 affiancate, 4 in 2×2, e così via (l'ultima riga può avere riquadri più larghi).
+- I **bordi tra i riquadri si trascinano** per ridimensionarli; ogni shell riceve la nuova misura.
+- In cima a ogni riquadro c'è una barretta col nome: quella **verde** è la scheda attiva, su cui lavorano assistente e preferiti. Un clic in un riquadro lo rende attivo; doppio clic sulla barretta per rinominare, tasto destro per il menu della scheda.
+- Le nuove schede si aggiungono alla griglia, quelle chiuse la lasciano. Ripremendo **▦** si torna a una scheda alla volta; la scelta viene ricordata.
+
 ## Il terminale
 È un terminale vero, come Windows Terminal: le shell girano nella console virtuale di Windows (ConPTY). Funzionano colori (16, 256 e 24 bit), programmi a schermo intero come `vi`, `less`, `htop` o `edit`, caratteri accentati ed emoji.
 
@@ -93,6 +99,7 @@ Un piccolo Common Lisp interpretato, con comandi per il sistema: vedi la [[Guida
 | Ctrl+V, Ctrl+Maiusc+V | incolla |
 | Ctrl+Maiusc+A | assistente |
 | Ctrl+Maiusc+P | preferiti |
+| Ctrl+Maiusc+G | schede affiancate / una alla volta |
 | Ctrl+F1 | questa guida |
 | Maiusc+PagSu / PagGiù | scorre la cronologia dello schermo |
 | Ctrl++ / Ctrl+- / Ctrl+0 | dimensione del carattere |

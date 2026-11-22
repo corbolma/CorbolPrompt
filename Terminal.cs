@@ -165,8 +165,10 @@ namespace CorbolPrompt
         Line[] ResizeScreen(Line[] old, int cols, int rows, bool toScrollback, ref int cy)
         {
             var lines = new List<Line>(old);
+            // le righe si allungano ma non si accorciano: stringendo per un momento (riquadri, bordo trascinato) il testo
+            // a destra resta nascosto, non perso, e ricompare quando si riallarga
             foreach (var ln in lines)
-                if (ln.C.Length != cols)
+                if (ln.C.Length < cols)
                 {
                     var c = new Cell[cols];
                     for (int x = 0; x < cols; x++) c[x] = x < ln.C.Length ? ln.C[x] : BlankDefault;

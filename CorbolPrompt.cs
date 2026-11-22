@@ -91,6 +91,8 @@ namespace CorbolPrompt
         public bool Exited;
         public readonly List<AiMessage> History = new List<AiMessage>();
         public RichTextBox Chat;
+        public Panel Pane;      // riquadro della vista affiancata (barretta col nome + terminale), creato quando serve
+        public Label Header;
         public List<Prompt.Block> Commands = new List<Prompt.Block>();
         public CancellationTokenSource AiCancel;
         public DateTime AiStart;
@@ -197,6 +199,8 @@ namespace CorbolPrompt
         readonly ToolTip tips = new ToolTip();
         ToolStripButton tbAi;
         ToolStripDropDownButton more, tbFav;
+        ToolStripButton tbTile;
+        bool tiled;   // tutte le schede affiancate in riquadri ridimensionabili
         readonly ContextMenuStrip newMenu = new ContextMenuStrip();
 
         // pannello dell'assistente
@@ -238,7 +242,9 @@ namespace CorbolPrompt
             tbFav.DropDown.ShowItemToolTips = true;
             tbFav.DropDownOpening += delegate { FillFavMenu(); };
             tbFav.DropDownItems.Add("-");   // si riempie all'apertura
-            tools.Items.AddRange(new ToolStripItem[] { tbFav, tbAi, more });
+            tbTile = new ToolStripButton("▦") { CheckOnClick = false };
+            tbTile.Click += delegate { ToggleTiled(); };
+            tools.Items.AddRange(new ToolStripItem[] { tbTile, tbFav, tbAi, more });
             // barra in alto e menu un po' più grandi del resto dell'interfaccia
             var big = new Font("Segoe UI", 10f);
             tools.Font = big;
@@ -261,6 +267,8 @@ namespace CorbolPrompt
             tabStrip.NewRequested += delegate { NewTab(ShellInfo.Default, cur != null ? cur.Cwd : null); };
             tabStrip.TabContextMenu += ShowTabMenu;
             tabStrip.TabRenameRequested += BeginRename;
+            tabStrip.Reordered += delegate { if (tiled) PlaceViews(); };
+            tiled = Settings.Get("view.tiled", false);
             tabStrip.ListRequested += ShowTabList;
             tabStrip.NewMenuRequested += p => { FillNewMenu(newMenu.Items); newMenu.Show(tabStrip, p); };
 
@@ -388,11 +396,14 @@ namespace CorbolPrompt
             var view = new TermView(term, fontSize) { Dock = DockStyle.Fill, Visible = false, ContextMenuStrip = termMenu };
             tab.View = view;
             termHost.Controls.Add(view);
-            view.Changed += delegate { if (tab == cur) UpdateTitle(); tabStrip.Invalidate(); };
+            view.Changed += delegate { if (tab == cur) UpdateTitle(); else UpdateHeader(tab); tabStrip.Invalidate(); };
+            // vista affiancata: un clic in un riquadro rende attiva la sua scheda
+            view.GotFocus += delegate { if (tiled && cur != tab && Tabs.Contains(tab)) Activate(tab); };
             view.ZoomRequested += n => Zoom(n);
             term.Reply += s => { var ses = tab.Session; if (ses != null) ses.Send(s); };
             term.CwdChanged += delegate { };
             Tabs.Insert(cur != null ? Tabs.IndexOf(cur) + 1 : Tabs.Count, tab);
+            if (tiled) PlaceViews();   // prima della sessione: la shell parte già con la misura del riquadro
             Activate(tab);
             StartSession(tab, cwd);
             return tab;
@@ -452,11 +463,12 @@ namespace CorbolPrompt
             if (cur != null && changed)
             {
                 cur.InputText = input.Text;
-                cur.View.Visible = false;
+                if (!tiled) cur.View.Visible = false;
             }
             cur = tab;
             tab.View.Visible = true;
-            tab.View.BringToFront();
+            if (!tiled) tab.View.BringToFront();
+            UpdateHeaders();
             tabStrip.Active = tab;
             tabStrip.EnsureVisible(tab);
             if (changed)
@@ -477,8 +489,10 @@ namespace CorbolPrompt
             try { tab.Session.Close(); } catch { }
             int i = Tabs.IndexOf(tab);
             Tabs.Remove(tab);
-            termHost.Controls.Remove(tab.View);
+            if (tab.View.Parent != null) tab.View.Parent.Controls.Remove(tab.View);
             tab.View.Dispose();
+            if (tab.Pane != null) { if (tab.Pane.Parent != null) tab.Pane.Parent.Controls.Remove(tab.Pane); tab.Pane.Dispose(); tab.Pane = null; }
+            if (tiled && Tabs.Count > 0) PlaceViews();
             if (tab.Chat != null) { chatHost.Controls.Remove(tab.Chat); tab.Chat.Dispose(); }
             if (Tabs.Count == 0) { cur = null; Close(); return; }
             if (tab == cur) { cur = null; Activate(Tabs[Math.Min(i, Tabs.Count - 1)]); }
@@ -495,6 +509,131 @@ namespace CorbolPrompt
         {
             Text = cur == null ? "CorbolPrompt" : cur.Title + " — CorbolPrompt";
             tabStrip.Invalidate();
+            if (cur != null) UpdateHeader(cur);
+        }
+
+        // ---------- vista affiancata ----------
+
+        static readonly Color HeaderBack = Color.FromArgb(36, 36, 36), HeaderActive = Color.FromArgb(18, 92, 40);
+
+        void ToggleTiled()
+        {
+            tiled = !tiled;
+            Settings.Set("view.tiled", tiled);
+            Settings.Save();
+            PlaceViews();
+            tbTile.Checked = tiled;
+            if (cur != null) { UpdateHeaders(); cur.View.Focus(); }
+        }
+
+        void EnsurePane(TermTab tab)
+        {
+            if (tab.Pane != null) return;
+            var pane = new Panel { Dock = DockStyle.Fill, BackColor = TermView.Background, Margin = new Padding(0) };
+            var header = new Label
+            {
+                Dock = DockStyle.Top, Height = S(24), AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(S(8), 0, 0, 0), Font = new Font("Segoe UI", 9.5f), BackColor = HeaderBack, ForeColor = TabStrip.TextDim, UseMnemonic = false
+            };
+            header.MouseDown += (s, e) =>
+            {
+                Activate(tab);
+                if (e.Button == MouseButtons.Right) ShowTabMenu(tab, tabStrip.PointToClient(Cursor.Position));
+            };
+            header.DoubleClick += delegate { BeginRename(tab); };
+            tab.Pane = pane;
+            tab.Header = header;
+            pane.Controls.Add(header);
+        }
+
+        void UpdateHeader(TermTab t)
+        {
+            if (t.Header == null) return;
+            string text = t.Title + (t.CustomName.Length > 0 ? "   ·   " + t.AutoTitle : "");
+            if (t.Header.Text != text) t.Header.Text = text;
+            bool act = t == cur;
+            t.Header.BackColor = act ? HeaderActive : HeaderBack;
+            t.Header.ForeColor = act ? Color.White : TabStrip.TextDim;
+        }
+
+        void UpdateHeaders() { foreach (var t in Tabs) UpdateHeader(t); }
+
+        // Mette i terminali al loro posto: uno alla volta, oppure tutti in una griglia di riquadri con bordi trascinabili
+        void PlaceViews()
+        {
+            termHost.SuspendLayout();
+            foreach (var t in Tabs)
+            {
+                if (t.View.Parent != null) t.View.Parent.Controls.Remove(t.View);
+                if (t.Pane != null && t.Pane.Parent != null) t.Pane.Parent.Controls.Remove(t.Pane);
+            }
+            // restano solo i contenitori della griglia di prima: si buttano (terminali e riquadri sono già staccati)
+            foreach (var c in termHost.Controls.Cast<Control>().ToList()) { termHost.Controls.Remove(c); c.Dispose(); }
+            SplitContainer root = null;
+            if (!tiled)
+            {
+                foreach (var t in Tabs)
+                {
+                    t.View.Dock = DockStyle.Fill;
+                    t.View.Visible = t == cur;
+                    termHost.Controls.Add(t.View);
+                }
+                if (cur != null) cur.View.BringToFront();
+            }
+            else
+            {
+                var panes = new List<Control>();
+                foreach (var t in Tabs)
+                {
+                    EnsurePane(t);
+                    t.View.Dock = DockStyle.Fill;
+                    t.View.Visible = true;
+                    t.Pane.Controls.Add(t.View);
+                    t.View.BringToFront();   // il terminale riempie lo spazio sotto la barretta
+                    panes.Add(t.Pane);
+                }
+                // griglia: colonne = radice quadrata arrotondata in su; l'ultima riga può avere meno riquadri, più larghi
+                int n = panes.Count, cols = (int)Math.Ceiling(Math.Sqrt(n)), rowsN = (int)Math.Ceiling(n / (double)cols);
+                var rows = new List<Control>();
+                for (int r = 0; r < rowsN; r++) rows.Add(Chain(panes.Skip(r * cols).Take(cols).ToList(), Orientation.Vertical));
+                var top = Chain(rows, Orientation.Horizontal);
+                top.Dock = DockStyle.Fill;
+                termHost.Controls.Add(top);
+                root = top as SplitContainer;
+                UpdateHeaders();
+            }
+            termHost.ResumeLayout(true);
+            if (root != null) Balance(root);
+        }
+
+        // Catena di riquadri affiancati (Vertical) o impilati (Horizontal) con bordi trascinabili
+        Control Chain(List<Control> items, Orientation o)
+        {
+            if (items.Count == 1) { items[0].Dock = DockStyle.Fill; return items[0]; }
+            var sc = new SplitContainer { Dock = DockStyle.Fill, Orientation = o, SplitterWidth = S(5), BackColor = Color.FromArgb(70, 70, 70), Tag = items.Count };
+            sc.Panel1.BackColor = sc.Panel2.BackColor = TermView.Background;
+            sc.Panel1MinSize = sc.Panel2MinSize = S(60);
+            items[0].Dock = DockStyle.Fill;
+            sc.Panel1.Controls.Add(items[0]);
+            var rest = Chain(items.Skip(1).ToList(), o);
+            sc.Panel2.Controls.Add(rest);
+            return sc;
+        }
+
+        // Parti uguali: ogni catena dà al primo riquadro 1/k dello spazio, poi si continua nel resto
+        void Balance(Control c)
+        {
+            var sc = c as SplitContainer;
+            if (sc != null)
+            {
+                int k = sc.Tag is int ? (int)sc.Tag : 2;
+                int size = sc.Orientation == Orientation.Vertical ? sc.Width : sc.Height;
+                int dist = (size - sc.SplitterWidth * (k - 1)) / k;
+                try { if (dist > sc.Panel1MinSize && size - dist - sc.SplitterWidth > sc.Panel2MinSize) sc.SplitterDistance = dist; } catch { }
+                sc.PerformLayout();
+                foreach (Control child in sc.Panel1.Controls) Balance(child);
+                foreach (Control child in sc.Panel2.Controls) Balance(child);
+            }
         }
 
         void FillNewMenu(ToolStripItemCollection items)
@@ -639,6 +778,8 @@ namespace CorbolPrompt
                 }
             };
             lang.DropDownItems.Add("-");
+            var tileItem = new ToolStripMenuItem(L.T("Affianca tutte le schede", "Show all tabs side by side")) { Checked = tiled, ShortcutKeyDisplayString = L.T("Ctrl+Maiusc+G", "Ctrl+Shift+G") };
+            tileItem.Click += delegate { ToggleTiled(); };
             var showBar = new ToolStripMenuItem(L.T("Suggerisci i preferiti sotto il terminale", "Suggest favorites below the terminal")) { Checked = Settings.Get("fav.bar", true), CheckOnClick = true };
             showBar.CheckedChanged += delegate { Settings.Set("fav.bar", showBar.Checked); Settings.Save(); UpdateFavBar(); };
             var welcome = new ToolStripMenuItem(L.T("Benvenuto...", "Welcome tour..."));
@@ -662,7 +803,7 @@ namespace CorbolPrompt
                 dd.AddRange(new ToolStripItem[] { upd, new ToolStripSeparator() });
             }
             dd.AddRange(new ToolStripItem[] { newSub, defShell, new ToolStripSeparator(), aiSettings, new ToolStripSeparator(), bigger, smaller, normal,
-                                              new ToolStripSeparator(), lang, showBar, new ToolStripSeparator(), welcome, guide, lispGuide, keys, new ToolStripSeparator(), check, autoUpd, about });
+                                              new ToolStripSeparator(), tileItem, lang, showBar, new ToolStripSeparator(), welcome, guide, lispGuide, keys, new ToolStripSeparator(), check, autoUpd, about });
         }
 
         void SetLanguage(string code)
@@ -676,6 +817,8 @@ namespace CorbolPrompt
         // Tutti i testi della finestra nella lingua corrente: all'avvio e quando si cambia lingua (le schede restano aperte)
         void ApplyTexts()
         {
+            tbTile.Checked = tiled;
+            tbTile.ToolTipText = L.T("Affianca tutte le schede (Ctrl+Maiusc+G)", "Show all tabs side by side (Ctrl+Shift+G)");
             tbFav.Text = "★ " + L.T("Preferiti", "Favorites");
             tbFav.ToolTipText = L.T("Comandi salvati (Ctrl+Maiusc+P)", "Saved commands (Ctrl+Shift+P)");
             tbAi.Text = "✦ " + L.T("Assistente", "Assistant");
@@ -703,11 +846,11 @@ namespace CorbolPrompt
             MessageBox.Show(this, L.T(
                 "Ctrl+Maiusc+T  nuova scheda\nCtrl+Maiusc+W  chiude la scheda\nCtrl+Tab / Ctrl+Maiusc+Tab  scheda successiva / precedente\n" +
                 "Ctrl+C con del testo selezionato  copia (senza selezione interrompe il comando)\nCtrl+V o clic destro → Incolla  incolla\n" +
-                "Ctrl+Maiusc+A  assistente\nCtrl+Maiusc+P  preferiti (Maiusc+clic incolla senza eseguire)\nMaiusc+PagSu / PagGiù o rotellina  scorre la cronologia dello schermo\nCtrl++ / Ctrl+- / Ctrl+0  dimensione del carattere\n" +
+                "Ctrl+Maiusc+A  assistente\nCtrl+Maiusc+P  preferiti (Maiusc+clic incolla senza eseguire)\nCtrl+Maiusc+G  affianca tutte le schede / una alla volta\nMaiusc+PagSu / PagGiù o rotellina  scorre la cronologia dello schermo\nCtrl++ / Ctrl+- / Ctrl+0  dimensione del carattere\n" +
                 "Doppio clic  seleziona una parola",
                 "Ctrl+Shift+T  new tab\nCtrl+Shift+W  close the tab\nCtrl+Tab / Ctrl+Shift+Tab  next / previous tab\n" +
                 "Ctrl+C with text selected  copy (without a selection it interrupts the command)\nCtrl+V or right click → Paste  paste\n" +
-                "Ctrl+Shift+A  assistant\nCtrl+Shift+P  favorites (Shift+click pastes without running)\nShift+PgUp / PgDn or mouse wheel  scroll the screen history\nCtrl++ / Ctrl+- / Ctrl+0  text size\n" +
+                "Ctrl+Shift+A  assistant\nCtrl+Shift+P  favorites (Shift+click pastes without running)\nCtrl+Shift+G  all tabs side by side / one at a time\nShift+PgUp / PgDn or mouse wheel  scroll the screen history\nCtrl++ / Ctrl+- / Ctrl+0  text size\n" +
                 "Double click  select a word"), L.T("Scorciatoie da tastiera", "Keyboard shortcuts"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
@@ -784,6 +927,7 @@ namespace CorbolPrompt
                 case Keys.Control | Keys.Shift | Keys.Tab: NextTab(-1); return true;
                 case Keys.Control | Keys.Shift | Keys.A: if (!split.Panel2Collapsed && input.Focused) { if (cur != null) cur.View.Focus(); } else FocusAssistant(); return true;
                 case Keys.Control | Keys.Shift | Keys.P: tbFav.ShowDropDown(); return true;
+                case Keys.Control | Keys.Shift | Keys.G: ToggleTiled(); return true;
                 case Keys.Control | Keys.F1: Help.Open(Help.Page("Guida-utente", "User-guide")); return true;
                 case Keys.Control | Keys.Shift | Keys.C: if (inTerm) { Copy(); return true; } break;
                 case Keys.Control | Keys.Shift | Keys.V: if (inTerm) { Paste(); return true; } break;
