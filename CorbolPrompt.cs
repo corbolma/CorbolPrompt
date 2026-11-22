@@ -98,6 +98,7 @@ namespace CorbolPrompt
         public DateTime AiStart;
         public string InputText = "";
         public string CustomName = "";   // nome dato dall'utente; vuoto = nome automatico (shell e cartella)
+        public int Notice;               // comando lungo finito senza che la scheda fosse attiva: 1 riuscito, 2 fallito
 
         public bool Busy { get { return AiCancel != null; } }
 
@@ -172,7 +173,7 @@ namespace CorbolPrompt
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
-            if (!(e.ToolStrip is ToolStripDropDown)) e.TextColor = TabStrip.Text_;
+            if (!(e.ToolStrip is ToolStripDropDown)) e.TextColor = e.Item.Tag is Color ? (Color)e.Item.Tag : TabStrip.Text_;   // Tag: colore speciale
             base.OnRenderItemText(e);
         }
 
@@ -199,8 +200,15 @@ namespace CorbolPrompt
         readonly ToolTip tips = new ToolTip();
         ToolStripButton tbAi;
         ToolStripDropDownButton more, tbFav;
-        ToolStripButton tbTile;
-        bool tiled;   // tutte le schede affiancate in riquadri ridimensionabili
+        ToolStripButton tbTile, tbBroadcast, tbFind;
+        bool tiled;       // tutte le schede affiancate in riquadri ridimensionabili
+        bool broadcast;   // con le schede affiancate: quello che si scrive va a tutte (non si salva: è facile dimenticarlo acceso)
+        // barra di ricerca sopra il terminale (Ctrl+Maiusc+F)
+        readonly Panel findBar = new Panel { Dock = DockStyle.Top, BackColor = TabStrip.TabBar, Visible = false };
+        readonly TextBox findBox = new TextBox { BorderStyle = BorderStyle.FixedSingle, BackColor = Color.FromArgb(45, 45, 45), ForeColor = TabStrip.Text_ };
+        readonly Label findCount = new Label { AutoSize = true, ForeColor = TabStrip.TextDim, BackColor = TabStrip.TabBar };
+        readonly CheckBox findCase = new CheckBox { Appearance = Appearance.Button, Text = "Aa", AutoSize = true, FlatStyle = FlatStyle.Flat, ForeColor = TabStrip.Text_, TabStop = false };
+        readonly Button findUp = new Button(), findDown = new Button(), findClose = new Button();
         readonly ContextMenuStrip newMenu = new ContextMenuStrip();
 
         // pannello dell'assistente
@@ -244,7 +252,11 @@ namespace CorbolPrompt
             tbFav.DropDownItems.Add("-");   // si riempie all'apertura
             tbTile = new ToolStripButton("▦") { CheckOnClick = false };
             tbTile.Click += delegate { ToggleTiled(); };
-            tools.Items.AddRange(new ToolStripItem[] { tbTile, tbFav, tbAi, more });
+            tbBroadcast = new ToolStripButton("⇶") { CheckOnClick = false };
+            tbBroadcast.Click += delegate { ToggleBroadcast(); };
+            tbFind = new ToolStripButton("") { CheckOnClick = false };
+            tbFind.Click += delegate { if (findBar.Visible) CloseFind(); else OpenFind(); };
+            tools.Items.AddRange(new ToolStripItem[] { tbBroadcast, tbTile, tbFind, tbFav, tbAi, more });
             // barra in alto e menu un po' più grandi del resto dell'interfaccia
             var big = new Font("Segoe UI", 10f);
             tools.Font = big;
@@ -277,6 +289,8 @@ namespace CorbolPrompt
             split.Panel1.Controls.Add(termHost);
             split.Panel1.Controls.Add(favBar);
             favBar.Height = S(34);
+            BuildFindBar();
+            split.Panel1.Controls.Add(findBar);
             Controls.Add(split);
             Controls.Add(topBar);
             ApplyTexts();
@@ -287,7 +301,7 @@ namespace CorbolPrompt
 
             Load += delegate
             {
-                split.SplitterDistance = Math.Max(200, split.Width - S(Settings.Get("ai.width", 400)));
+                split.SplitterDistance = Math.Max(200, split.Width - S(AiWidth));
                 split.Panel2Collapsed = !Settings.Get("ai.visible", true);
                 tbAi.Checked = !split.Panel2Collapsed;
                 if (startDir != null || !RestoreSession()) NewTab(ShellInfo.Default, startDir);
@@ -308,12 +322,140 @@ namespace CorbolPrompt
                 // barra del titolo scura (Windows 10 20H1 e successivi)
                 try { int on = 1; if (DwmSetWindowAttribute(Handle, 20, ref on, 4) != 0) DwmSetWindowAttribute(Handle, 19, ref on, 4); } catch { }
             };
-            Activated += delegate { UpdateService(); };
+            Activated += delegate
+            {
+                UpdateService();
+                if (cur != null && cur.Notice != 0) { cur.Notice = 0; tabStrip.Invalidate(); }
+                if (notifier != null) notifier.Visible = false;
+            };
             FormClosing += (s, e) => OnClosingForm();
+            split.SplitterMoved += delegate { TrackAiWidth(); };
+            // tornando dalla riduzione a icona il pannello riprende la sua larghezza
+            Resize += delegate { if (WindowState != FormWindowState.Minimized && !split.Panel2Collapsed && split.Width > S(500)) { int want = Math.Max(200, split.Width - S(AiWidth)); if (Math.Abs(split.SplitterDistance - want) > S(40) && split.Width - split.SplitterDistance < S(150)) split.SplitterDistance = want; } };
             busyTimer.Tick += delegate { UpdateBusy(); };
         }
 
         int S(int v) { return (int)Math.Round(v * DeviceDpi / 96.0); }
+
+        // Larghezza dell'assistente (a 96 DPI): l'ultima buona, presa quando si sposta il bordo o si ridimensiona la finestra.
+        // Con la finestra ridotta a icona il pannello diventa strettissimo: quella misura non si tiene (né si salva).
+        int aiWidth = -1;
+        int AiWidth
+        {
+            get { return Math.Max(250, aiWidth > 0 ? aiWidth : Settings.Get("ai.width", 400)); }
+        }
+
+        void TrackAiWidth()
+        {
+            if (WindowState == FormWindowState.Minimized || split.Panel2Collapsed || split.Width < S(500) || !IsHandleCreated) return;
+            int w = (int)Math.Round((split.Width - split.SplitterDistance) * 96.0 / DeviceDpi);
+            if (w >= 150) aiWidth = w;
+        }
+
+        // ---------- ricerca nel testo ----------
+
+        void BuildFindBar()
+        {
+            var f = new Font("Segoe UI", 10f);
+            findBox.Font = f;
+            findCount.Font = f;
+            findCase.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+            findCase.BackColor = TabStrip.TabBar;
+            findCase.TextAlign = ContentAlignment.MiddleCenter;
+            findCase.FlatAppearance.BorderColor = Color.FromArgb(75, 75, 75);
+            findCase.FlatAppearance.CheckedBackColor = TabStrip.Accent;
+            findCase.FlatAppearance.MouseOverBackColor = TabStrip.Hover;
+            foreach (var b in new[] { findUp, findDown, findClose })
+            {
+                b.FlatStyle = FlatStyle.Flat;
+                b.ForeColor = TabStrip.Text_;
+                b.BackColor = TabStrip.TabBar;
+                b.Font = f;
+                b.TabStop = false;
+                b.FlatAppearance.BorderSize = 0;
+                b.FlatAppearance.MouseOverBackColor = TabStrip.Hover;
+                b.Cursor = Cursors.Hand;
+            }
+            findUp.Text = "↑"; findDown.Text = "↓"; findClose.Text = "✕";
+            findUp.Click += delegate { FindNext(true); };
+            findDown.Click += delegate { FindNext(false); };
+            findClose.Click += delegate { CloseFind(); };
+            findCase.CheckedChanged += delegate { DoFind(); findBox.Focus(); };
+            findBox.TextChanged += delegate { DoFind(); };
+            findBox.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; FindNext(!e.Shift); }
+                else if (e.KeyCode == Keys.F3) { e.SuppressKeyPress = true; FindNext(!e.Shift); }
+                else if (e.KeyCode == Keys.Escape) { e.SuppressKeyPress = true; CloseFind(); }
+            };
+            findBar.Controls.AddRange(new Control[] { findBox, findCase, findUp, findDown, findCount, findClose });
+            findBar.Resize += delegate { LayoutFindBar(); };
+            findBar.VisibleChanged += delegate { LayoutFindBar(); };
+        }
+
+        void LayoutFindBar()
+        {
+            int h = findBox.PreferredHeight;
+            findBar.Height = h + S(10);
+            int y = S(5), x = S(8);
+            findBox.SetBounds(x, y, S(280), h);
+            x = findBox.Right + S(6);
+            foreach (Control c in new Control[] { findCase, findUp, findDown })
+            {
+                c.SetBounds(x, y, Math.Max(S(30), c is CheckBox ? c.PreferredSize.Width : S(30)), h);
+                x = c.Right + S(2);
+            }
+            findCount.Location = new Point(x + S(8), y + (h - findCount.Height) / 2);
+            findClose.SetBounds(findBar.ClientSize.Width - S(8) - S(30), y, S(30), h);
+        }
+
+        void OpenFind()
+        {
+            if (cur == null) return;
+            // testo selezionato su una riga sola: diventa la ricerca
+            if (cur.View.HasSelection)
+            {
+                string sel = cur.View.SelectedText;
+                if (sel.Length > 0 && sel.Length < 200 && sel.IndexOf('\n') < 0) findBox.Text = sel;
+            }
+            findBar.Visible = true;
+            tbFind.Checked = true;
+            findBox.Focus();
+            findBox.SelectAll();
+            DoFind();
+        }
+
+        void CloseFind()
+        {
+            findBar.Visible = false;
+            tbFind.Checked = false;
+            foreach (var t in Tabs) t.View.ClearSearch();
+            if (cur != null) cur.View.Focus();
+        }
+
+        void DoFind()
+        {
+            if (cur == null || !findBar.Visible) return;
+            if (findBox.Text.Length == 0) cur.View.ClearSearch();
+            else cur.View.SetSearch(findBox.Text, findCase.Checked);
+            UpdateFindCount();
+        }
+
+        void FindNext(bool up)
+        {
+            if (cur == null) return;
+            if (findBox.Text.Length > 0 && cur.View.SearchCount == 0) DoFind();
+            cur.View.FindNext(up);
+            UpdateFindCount();
+        }
+
+        void UpdateFindCount()
+        {
+            if (cur == null || !findBar.Visible) return;
+            int n = cur.View.SearchCount, i = cur.View.SearchIndex;
+            findCount.Text = findBox.Text.Length == 0 ? "" : n == 0 ? L.T("Nessun risultato", "No results") : L.F("{0} di {1}", "{0} of {1}", i + 1, n);
+            findCount.ForeColor = findBox.Text.Length > 0 && n == 0 ? Color.FromArgb(240, 110, 110) : TabStrip.TextDim;
+        }
 
         // ---------- finestra ----------
 
@@ -336,7 +478,7 @@ namespace CorbolPrompt
             closing = true;
             var b = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
             Settings.Set("window", b.X + "," + b.Y + "," + b.Width + "," + b.Height + (WindowState == FormWindowState.Maximized ? ",max" : ""));
-            if (!split.Panel2Collapsed) Settings.Set("ai.width", (int)Math.Round((split.Width - split.SplitterDistance) * 96.0 / DeviceDpi));
+            Settings.Set("ai.width", AiWidth);
             Settings.Set("ai.visible", !split.Panel2Collapsed);
             if (ownsSession) SaveSession();
             Settings.Save();
@@ -400,6 +542,16 @@ namespace CorbolPrompt
             // vista affiancata: un clic in un riquadro rende attiva la sua scheda
             view.GotFocus += delegate { if (tiled && cur != tab && Tabs.Contains(tab)) Activate(tab); };
             view.ZoomRequested += n => Zoom(n);
+            view.ExplainRequested += m => ExplainCommand(tab, m);
+            view.ShellId = shell.Id;
+            view.CommandDone += m => OnCommandDone(tab, m);
+            view.SearchChanged += delegate { if (tab == cur) UpdateFindCount(); };
+            // scrivi in tutte le schede affiancate: quello che si scrive in quella attiva va anche alle altre
+            view.UserInput += (s, paste) =>
+            {
+                if (!broadcast || !tiled || tab != cur) return;
+                foreach (var o in Tabs) if (o != tab && !o.Exited && o.Session != null) o.View.Mirror(s, paste);
+            };
             term.Reply += s => { var ses = tab.Session; if (ses != null) ses.Send(s); };
             term.CwdChanged += delegate { };
             Tabs.Insert(cur != null ? Tabs.IndexOf(cur) + 1 : Tabs.Count, tab);
@@ -466,6 +618,7 @@ namespace CorbolPrompt
                 if (!tiled) cur.View.Visible = false;
             }
             cur = tab;
+            tab.Notice = 0;
             tab.View.Visible = true;
             if (!tiled) tab.View.BringToFront();
             UpdateHeaders();
@@ -476,6 +629,8 @@ namespace CorbolPrompt
                 ShowChat(tab);
                 UpdateFavBar();
                 input.Text = tab.InputText;
+                // la ricerca aperta segue la scheda attiva
+                if (findBar.Visible) { foreach (var t in Tabs) if (t != tab) t.View.ClearSearch(); DoFind(); }
             }
             UpdateTitle();
             UpdateSendButton();
@@ -514,16 +669,37 @@ namespace CorbolPrompt
 
         // ---------- vista affiancata ----------
 
-        static readonly Color HeaderBack = Color.FromArgb(36, 36, 36), HeaderActive = Color.FromArgb(18, 92, 40);
+        static readonly Color HeaderBack = Color.FromArgb(36, 36, 36), HeaderActive = Color.FromArgb(18, 92, 40),
+                              HeaderBroadcast = Color.FromArgb(110, 62, 0), HeaderBroadcastActive = Color.FromArgb(190, 105, 0);
 
         void ToggleTiled()
         {
             tiled = !tiled;
             Settings.Set("view.tiled", tiled);
             Settings.Save();
+            if (!tiled) broadcast = false;
             PlaceViews();
-            tbTile.Checked = tiled;
+            UpdateTileButtons();
             if (cur != null) { UpdateHeaders(); cur.View.Focus(); }
+        }
+
+        // Scrivi in tutte le schede: ha senso solo vedendole tutte, quindi accende anche la vista affiancata
+        void ToggleBroadcast()
+        {
+            if (!tiled && !broadcast) ToggleTiled();
+            broadcast = !broadcast;
+            UpdateTileButtons();
+            UpdateHeaders();
+            if (cur != null) cur.View.Focus();
+        }
+
+        void UpdateTileButtons()
+        {
+            tbTile.Checked = tiled;
+            tbBroadcast.Visible = tiled;
+            tbBroadcast.Checked = broadcast;
+            tbBroadcast.Tag = broadcast ? (object)Color.FromArgb(255, 170, 60) : null;
+            tbBroadcast.Invalidate();
         }
 
         void EnsurePane(TermTab tab)
@@ -549,11 +725,12 @@ namespace CorbolPrompt
         void UpdateHeader(TermTab t)
         {
             if (t.Header == null) return;
-            string text = t.Title + (t.CustomName.Length > 0 ? "   ·   " + t.AutoTitle : "");
+            bool bc = broadcast && !t.Exited;
+            string text = (bc ? "⇶  " : "") + t.Title + (t.CustomName.Length > 0 ? "   ·   " + t.AutoTitle : "");
             if (t.Header.Text != text) t.Header.Text = text;
             bool act = t == cur;
-            t.Header.BackColor = act ? HeaderActive : HeaderBack;
-            t.Header.ForeColor = act ? Color.White : TabStrip.TextDim;
+            t.Header.BackColor = bc ? (act ? HeaderBroadcastActive : HeaderBroadcast) : act ? HeaderActive : HeaderBack;
+            t.Header.ForeColor = act || bc ? Color.White : TabStrip.TextDim;
         }
 
         void UpdateHeaders() { foreach (var t in Tabs) UpdateHeader(t); }
@@ -780,8 +957,15 @@ namespace CorbolPrompt
             lang.DropDownItems.Add("-");
             var tileItem = new ToolStripMenuItem(L.T("Affianca tutte le schede", "Show all tabs side by side")) { Checked = tiled, ShortcutKeyDisplayString = L.T("Ctrl+Maiusc+G", "Ctrl+Shift+G") };
             tileItem.Click += delegate { ToggleTiled(); };
+            var bcItem = new ToolStripMenuItem(L.T("Scrivi in tutte le schede affiancate", "Type in all tiled tabs")) { ShortcutKeyDisplayString = L.T("Ctrl+Maiusc+B", "Ctrl+Shift+B") };
+            bcItem.Click += delegate { ToggleBroadcast(); };
+            var findItem = new ToolStripMenuItem(L.T("Cerca nel testo...", "Find in text...")) { ShortcutKeyDisplayString = L.T("Ctrl+Maiusc+F", "Ctrl+Shift+F") };
+            findItem.Click += delegate { OpenFind(); };
+            more.DropDownOpening += delegate { tileItem.Checked = tiled; bcItem.Checked = broadcast; };
             var showBar = new ToolStripMenuItem(L.T("Suggerisci i preferiti sotto il terminale", "Suggest favorites below the terminal")) { Checked = Settings.Get("fav.bar", true), CheckOnClick = true };
             showBar.CheckedChanged += delegate { Settings.Set("fav.bar", showBar.Checked); Settings.Save(); UpdateFavBar(); };
+            var notify = new ToolStripMenuItem(L.T("Avvisa quando finisce un comando lungo", "Notify when a long command finishes")) { Checked = Settings.Get("notify.done", true), CheckOnClick = true };
+            notify.CheckedChanged += delegate { Settings.Set("notify.done", notify.Checked); Settings.Save(); };
             var welcome = new ToolStripMenuItem(L.T("Benvenuto...", "Welcome tour..."));
             welcome.Click += delegate { WelcomeForm.ShowFor(this); };
             var guide = new ToolStripMenuItem(L.T("Guida", "User guide")) { ShortcutKeyDisplayString = "Ctrl+F1" };
@@ -803,7 +987,7 @@ namespace CorbolPrompt
                 dd.AddRange(new ToolStripItem[] { upd, new ToolStripSeparator() });
             }
             dd.AddRange(new ToolStripItem[] { newSub, defShell, new ToolStripSeparator(), aiSettings, new ToolStripSeparator(), bigger, smaller, normal,
-                                              new ToolStripSeparator(), tileItem, lang, showBar, new ToolStripSeparator(), welcome, guide, lispGuide, keys, new ToolStripSeparator(), check, autoUpd, about });
+                                              new ToolStripSeparator(), findItem, tileItem, bcItem, lang, showBar, notify, new ToolStripSeparator(), welcome, guide, lispGuide, keys, new ToolStripSeparator(), check, autoUpd, about });
         }
 
         void SetLanguage(string code)
@@ -817,8 +1001,20 @@ namespace CorbolPrompt
         // Tutti i testi della finestra nella lingua corrente: all'avvio e quando si cambia lingua (le schede restano aperte)
         void ApplyTexts()
         {
-            tbTile.Checked = tiled;
+            UpdateTileButtons();
             tbTile.ToolTipText = L.T("Affianca tutte le schede (Ctrl+Maiusc+G)", "Show all tabs side by side (Ctrl+Shift+G)");
+            tbBroadcast.ToolTipText = L.T("Scrivi in tutte le schede affiancate: quello che digiti va a tutte insieme (Ctrl+Maiusc+B)",
+                                          "Type in all tiled tabs: what you type goes to all of them at once (Ctrl+Shift+B)");
+            findBox.AccessibleName = L.T("Cerca", "Find");
+            tbFind.Text = "🔍 " + L.T("Cerca", "Find");
+            tbFind.ToolTipText = L.T("Cerca nel testo della scheda (Ctrl+Maiusc+F)", "Find in the tab's text (Ctrl+Shift+F)");
+            tips.SetToolTip(findBox, L.T("Cerca nel testo della scheda · Invio = precedente (più in alto), Maiusc+Invio = successivo, Esc = chiudi",
+                                         "Find in the tab's text · Enter = previous (higher up), Shift+Enter = next, Esc = close"));
+            tips.SetToolTip(findCase, L.T("Maiuscole e minuscole distinte", "Match case"));
+            tips.SetToolTip(findUp, L.T("Precedente (Invio)", "Previous (Enter)"));
+            tips.SetToolTip(findDown, L.T("Successivo (Maiusc+Invio)", "Next (Shift+Enter)"));
+            tips.SetToolTip(findClose, L.T("Chiudi (Esc)", "Close (Esc)"));
+            UpdateFindCount();
             tbFav.Text = "★ " + L.T("Preferiti", "Favorites");
             tbFav.ToolTipText = L.T("Comandi salvati (Ctrl+Maiusc+P)", "Saved commands (Ctrl+Shift+P)");
             tbAi.Text = "✦ " + L.T("Assistente", "Assistant");
@@ -846,12 +1042,16 @@ namespace CorbolPrompt
             MessageBox.Show(this, L.T(
                 "Ctrl+Maiusc+T  nuova scheda\nCtrl+Maiusc+W  chiude la scheda\nCtrl+Tab / Ctrl+Maiusc+Tab  scheda successiva / precedente\n" +
                 "Ctrl+C con del testo selezionato  copia (senza selezione interrompe il comando)\nCtrl+V o clic destro → Incolla  incolla\n" +
-                "Ctrl+Maiusc+A  assistente\nCtrl+Maiusc+P  preferiti (Maiusc+clic incolla senza eseguire)\nCtrl+Maiusc+G  affianca tutte le schede / una alla volta\nMaiusc+PagSu / PagGiù o rotellina  scorre la cronologia dello schermo\nCtrl++ / Ctrl+- / Ctrl+0  dimensione del carattere\n" +
-                "Doppio clic  seleziona una parola",
+                "Ctrl+Maiusc+A  assistente\nCtrl+Maiusc+P  preferiti (Maiusc+clic incolla senza eseguire)\nCtrl+Maiusc+G  affianca tutte le schede / una alla volta\n" +
+                "Ctrl+Maiusc+B  scrivi in tutte le schede affiancate\nCtrl+Maiusc+F  cerca nel testo (F3 / Maiusc+F3 risultato precedente / successivo)\nCtrl+Maiusc+↑ / ↓  comando precedente / successivo\n" +
+                "Maiusc+PagSu / PagGiù o rotellina  scorre la cronologia dello schermo\nCtrl++ / Ctrl+- / Ctrl+0  dimensione del carattere\n" +
+                "Doppio clic  seleziona una parola\nCtrl+clic su un indirizzo o un percorso  lo apre\nClic sul segno rosso a sinistra di un comando  l'assistente spiega l'errore\nTrascinare un file sul terminale  ne scrive il percorso",
                 "Ctrl+Shift+T  new tab\nCtrl+Shift+W  close the tab\nCtrl+Tab / Ctrl+Shift+Tab  next / previous tab\n" +
                 "Ctrl+C with text selected  copy (without a selection it interrupts the command)\nCtrl+V or right click → Paste  paste\n" +
-                "Ctrl+Shift+A  assistant\nCtrl+Shift+P  favorites (Shift+click pastes without running)\nCtrl+Shift+G  all tabs side by side / one at a time\nShift+PgUp / PgDn or mouse wheel  scroll the screen history\nCtrl++ / Ctrl+- / Ctrl+0  text size\n" +
-                "Double click  select a word"), L.T("Scorciatoie da tastiera", "Keyboard shortcuts"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                "Ctrl+Shift+A  assistant\nCtrl+Shift+P  favorites (Shift+click pastes without running)\nCtrl+Shift+G  all tabs side by side / one at a time\n" +
+                "Ctrl+Shift+B  type in all tiled tabs\nCtrl+Shift+F  find in text (F3 / Shift+F3 previous / next result)\nCtrl+Shift+↑ / ↓  previous / next command\n" +
+                "Shift+PgUp / PgDn or mouse wheel  scroll the screen history\nCtrl++ / Ctrl+- / Ctrl+0  text size\n" +
+                "Double click  select a word\nCtrl+click on an address or a path  open it\nClick the red mark left of a command  the assistant explains the error\nDrag a file onto the terminal  types its path"), L.T("Scorciatoie da tastiera", "Keyboard shortcuts"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         void BuildTermMenu()
@@ -881,14 +1081,44 @@ namespace CorbolPrompt
             fav.Click += delegate { if (cur != null && cur.View.HasSelection) AddFavorite(cur.View.SelectedText, cur.Shell.Lang, ""); };
             var clear = new ToolStripMenuItem(L.T("Cancella la cronologia dello schermo", "Clear the screen history"));
             clear.Click += delegate { if (cur != null) { lock (cur.Term.Sync) cur.Term.ClearScrollback(); cur.View.OutputArrived(); } };
+            var find = new ToolStripMenuItem(L.T("Cerca nel testo...", "Find in text...")) { ShortcutKeyDisplayString = L.T("Ctrl+Maiusc+F", "Ctrl+Shift+F") };
+            find.Click += delegate { OpenFind(); };
+            // voci che compaiono solo se il clic destro è su un link o su un comando fallito
+            var openLink = new ToolStripMenuItem("") { ShortcutKeyDisplayString = L.T("Ctrl+clic", "Ctrl+click"), Font = new Font(termMenu.Font, FontStyle.Bold) };
+            openLink.Click += delegate { if (cur != null && cur.View.MenuLink != null) TermView.OpenLink(cur.View.MenuLink); };
+            var copyLink = new ToolStripMenuItem("");
+            copyLink.Click += delegate { if (cur != null && cur.View.MenuLink != null) try { Clipboard.SetText(cur.View.MenuLink.Target); } catch { } };
+            var showLink = new ToolStripMenuItem(L.T("Mostra in Esplora file", "Show in File Explorer"));
+            showLink.Click += delegate { if (cur != null && cur.View.MenuLink != null) TermView.ShowInExplorer(cur.View.MenuLink); };
+            var explainFail = new ToolStripMenuItem(L.T("Spiega l'errore di questo comando", "Explain this command's error")) { Font = new Font(termMenu.Font, FontStyle.Bold) };
+            explainFail.Click += delegate { if (cur != null && cur.View.MenuFailed != null) ExplainCommand(cur, cur.View.MenuFailed); };
+            var copyCmd = new ToolStripMenuItem(L.T("Copia il comando", "Copy the command"));
+            copyCmd.Click += delegate { var m = cur != null ? cur.View.MenuCommand : null; if (m == null) return; string s; lock (cur.Term.Sync) s = cur.Term.CommandText(m); try { if (s.Length > 0) Clipboard.SetText(s); } catch { } };
+            var copyOut = new ToolStripMenuItem(L.T("Copia l'output del comando", "Copy the command's output"));
+            copyOut.Click += delegate { var m = cur != null ? cur.View.MenuCommand : null; if (m == null) return; string s; lock (cur.Term.Sync) s = cur.Term.CommandOutput(m, 100000); try { if (s.Length > 0) Clipboard.SetText(s.Replace("\n", "\r\n")); } catch { } };
+            var sepLink = new ToolStripSeparator();
             termMenu.Opening += delegate
             {
                 bool sel = cur != null && cur.View.HasSelection;
                 copy.Enabled = sel;
                 fav.Enabled = sel;
                 explain.Text = sel ? L.T("Spiega la selezione con l'assistente", "Explain the selection with the assistant") : L.T("Spiega lo schermo con l'assistente", "Explain the screen with the assistant");
+                var k = cur != null ? cur.View.MenuLink : null;
+                var m = cur != null ? cur.View.MenuFailed : null;
+                openLink.Visible = copyLink.Visible = k != null;
+                showLink.Visible = k != null && !k.IsUrl;
+                explainFail.Visible = m != null;
+                var mc = cur != null ? cur.View.MenuCommand : null;
+                copyCmd.Visible = copyOut.Visible = mc != null;
+                sepLink.Visible = k != null || m != null || mc != null;
+                if (k != null)
+                {
+                    openLink.Text = k.IsUrl ? L.T("Apri il link", "Open link") : k.IsDir ? L.T("Apri la cartella", "Open folder") : L.T("Apri il file", "Open file");
+                    copyLink.Text = k.IsUrl ? L.T("Copia il link", "Copy link") : L.T("Copia il percorso", "Copy path");
+                }
             };
-            termMenu.Items.AddRange(new ToolStripItem[] { copy, paste, all, fav, new ToolStripSeparator(), explain, ask, new ToolStripSeparator(), clear });
+            termMenu.Items.AddRange(new ToolStripItem[] { openLink, copyLink, showLink, explainFail, copyCmd, copyOut, sepLink,
+                copy, paste, all, fav, new ToolStripSeparator(), find, explain, ask, new ToolStripSeparator(), clear });
         }
 
         void Copy()
@@ -928,6 +1158,9 @@ namespace CorbolPrompt
                 case Keys.Control | Keys.Shift | Keys.A: if (!split.Panel2Collapsed && input.Focused) { if (cur != null) cur.View.Focus(); } else FocusAssistant(); return true;
                 case Keys.Control | Keys.Shift | Keys.P: tbFav.ShowDropDown(); return true;
                 case Keys.Control | Keys.Shift | Keys.G: ToggleTiled(); return true;
+                case Keys.Control | Keys.Shift | Keys.B: ToggleBroadcast(); return true;
+                case Keys.Control | Keys.Shift | Keys.F: OpenFind(); return true;
+                case Keys.F3: case Keys.Shift | Keys.F3: if (findBar.Visible && findBox.Text.Length > 0) { FindNext(keyData == Keys.F3); return true; } break;
                 case Keys.Control | Keys.F1: Help.Open(Help.Page("Guida-utente", "User-guide")); return true;
                 case Keys.Control | Keys.Shift | Keys.C: if (inTerm) { Copy(); return true; } break;
                 case Keys.Control | Keys.Shift | Keys.V: if (inTerm) { Paste(); return true; } break;
@@ -1009,7 +1242,7 @@ namespace CorbolPrompt
             if (!split.Panel2Collapsed) return;
             split.Panel2Collapsed = false;
             tbAi.Checked = true;
-            split.SplitterDistance = Math.Max(200, split.Width - S(Settings.Get("ai.width", 400)));
+            split.SplitterDistance = Math.Max(200, split.Width - S(AiWidth));
         }
 
         void FocusAssistant()
@@ -1299,8 +1532,77 @@ namespace CorbolPrompt
 
         static readonly Regex TabWords = new Regex(@"\b(schede|tabs|altra scheda|other tab)\b", RegexOptions.IgnoreCase);
 
+        // ---------- avviso a fine comando ----------
+
+        [DllImport("user32.dll")] static extern bool FlashWindowEx(ref FLASHWINFO fi);
+        [StructLayout(LayoutKind.Sequential)] struct FLASHWINFO { public int cbSize; public IntPtr hwnd; public int dwFlags, uCount, dwTimeout; }
+
+        NotifyIcon notifier;
+        TermTab notifyTab;
+        const int LongCommandSeconds = 10;
+
+        // Un comando lungo (almeno 10 s) è finito: se la scheda non è quella attiva le compare un pallino;
+        // se CorbolPrompt non è in primo piano, la barra delle applicazioni lampeggia e arriva una notifica di Windows
+        void OnCommandDone(TermTab tab, CmdMark m)
+        {
+            if (closing || !Tabs.Contains(tab) || m.Started == DateTime.MinValue) return;
+            var took = DateTime.Now - m.Started;
+            if (took.TotalSeconds < LongCommandSeconds) return;
+            bool front = ActiveForm == this && WindowState != FormWindowState.Minimized;
+            if (front && tab == cur) return;
+            if (tab != cur || !front) { tab.Notice = m.Failed ? 2 : 1; tabStrip.Invalidate(); }
+            if (front || !Settings.Get("notify.done", true)) return;
+            try
+            {
+                var fi = new FLASHWINFO { cbSize = Marshal.SizeOf(typeof(FLASHWINFO)), hwnd = Handle, dwFlags = 3 | 12, uCount = 0, dwTimeout = 0 };   // finché non si torna alla finestra
+                FlashWindowEx(ref fi);
+            }
+            catch { }
+            string cmd;
+            lock (tab.Term.Sync) cmd = tab.Term.CommandText(m);
+            if (cmd.Length > 80) cmd = cmd.Substring(0, 79) + "…";
+            string when = took.TotalMinutes >= 1 ? L.F("{0} min {1} s", "{0} min {1} s", (int)took.TotalMinutes, took.Seconds) : L.F("{0} s", "{0} s", (int)took.TotalSeconds);
+            string title = m.Failed ? L.F("Comando fallito (codice {0})", "Command failed (exit code {0})", m.ExitCode) : L.T("Comando finito", "Command finished");
+            if (notifier == null)
+            {
+                notifier = new NotifyIcon { Icon = Icon, Text = "CorbolPrompt" };
+                notifier.BalloonTipClicked += delegate { BringBack(notifyTab); };
+                notifier.Click += delegate { BringBack(notifyTab); };
+                notifier.BalloonTipClosed += delegate { notifier.Visible = false; };
+                FormClosed += delegate { notifier.Visible = false; notifier.Dispose(); };
+            }
+            notifyTab = tab;
+            notifier.Visible = true;
+            notifier.ShowBalloonTip(8000, title, cmd + "\n" + tab.Title + " · " + when, m.Failed ? ToolTipIcon.Warning : ToolTipIcon.Info);
+        }
+
+        void BringBack(TermTab tab)
+        {
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            Show();
+            Activate();
+            if (tab != null && Tabs.Contains(tab)) Activate(tab);
+            if (notifier != null) notifier.Visible = false;
+        }
+
+        // Comando fallito (segno rosso o pulsante "Spiega l'errore"): all'assistente vanno il comando, il codice e il suo output
+        void ExplainCommand(TermTab t, CmdMark m)
+        {
+            if (t == null || !Tabs.Contains(t)) return;
+            string cmd, output;
+            lock (t.Term.Sync) { cmd = t.Term.CommandText(m); output = t.Term.CommandOutput(m, 150); }
+            if (output.Length > 8000) output = "…" + output.Substring(output.Length - 8000);
+            if (t != cur) Activate(t);
+            if (t.Busy) { ShowAssistant(); return; }
+            string shortCmd = cmd.Length > 60 ? cmd.Substring(0, 59) + "…" : cmd;
+            Ask(m.ExitCode == 1 ? L.F("Perché {0} non ha funzionato?", "Why did {0} fail?", shortCmd.Length > 0 ? "`" + shortCmd + "`" : L.T("il comando", "the command"))
+                                : L.F("Perché {0} non ha funzionato (codice {1})?", "Why did {0} fail (exit code {1})?", shortCmd.Length > 0 ? "`" + shortCmd + "`" : L.T("il comando", "the command"), m.ExitCode),
+                "The user ran this command and it failed with exit code " + m.ExitCode + ":\n```\n" + cmd + "\n```\nIts output:\n```text\n" +
+                (output.Length > 0 ? output : "(no output)") + "\n```\nExplain briefly what went wrong and, if possible, give the corrected command.\n");
+        }
+
         // Testo per l'assistente: scheda, shell, cartella, ultime righe, selezione, altre schede, richiesta
-        string Context(TermTab t, string request)
+        string Context(TermTab t, string request, string details = null)
         {
             var sb = new StringBuilder();
             string cwd = t.Cwd;
@@ -1340,6 +1642,7 @@ namespace CorbolPrompt
                     }
                 }
             }
+            if (details != null) sb.Append("\n").Append(details);
             sb.Append("\nRequest: ").Append(request);
             return sb.ToString();
         }
@@ -1359,7 +1662,8 @@ namespace CorbolPrompt
             return false;
         }
 
-        void Ask(string text)
+        // details: informazioni in più per l'assistente che non si mostrano nella conversazione (es. l'output di un comando fallito)
+        void Ask(string text, string details = null)
         {
             var t = cur;
             if (t == null || t.Busy) return;
@@ -1374,7 +1678,7 @@ namespace CorbolPrompt
             }
             var req = new AiRequest { System = Prompt.System };
             foreach (var m in t.History.Skip(Math.Max(0, t.History.Count - 12))) req.Messages.Add(m);
-            req.Messages.Add(new AiMessage("user", Context(t, text)));
+            req.Messages.Add(new AiMessage("user", Context(t, text, details)));
             t.AiCancel = new CancellationTokenSource();
             t.AiStart = DateTime.Now;
             var token = t.AiCancel.Token;

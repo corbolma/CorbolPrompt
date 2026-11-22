@@ -117,6 +117,14 @@ namespace CorbolPrompt
 
                 var cr = CloseRect(r);
                 var tr = new Rectangle(r.X + S(12), r.Y, cr.Left - r.X - S(14), r.Height);
+                // comando lungo finito mentre la scheda non era in vista: pallino verde (riuscito) o rosso (fallito) prima del nome
+                if (d.Notice != 0)
+                {
+                    int ds = S(8);
+                    using (var b = new SolidBrush(d.Notice == 2 ? Color.FromArgb(231, 72, 86) : Accent))
+                        g.FillEllipse(b, tr.X, r.Y + (r.Height - ds) / 2, ds, ds);
+                    tr = new Rectangle(tr.X + ds + S(6), tr.Y, tr.Width - ds - S(6), tr.Height);
+                }
                 TextRenderer.DrawText(g, d.Title, Font, tr, act ? Text_ : TextDim,
                     TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine);
 

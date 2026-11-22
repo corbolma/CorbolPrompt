@@ -150,15 +150,24 @@ namespace CorbolPrompt
             waiter.Start();
         }
 
-        // Argomenti: PowerShell e cmd scrivono la cartella corrente nel prompt (OSC 9;9), così l'app la conosce
+        // Argomenti: PowerShell e cmd scrivono la cartella corrente nel prompt (OSC 9;9), così l'app la conosce,
+        // e segnano inizio del prompt, inizio del comando e fine del comando con il suo codice (OSC 133 A/B/D).
+        // D si manda solo se dall'ultimo prompt è stato eseguito un comando (la cronologia è cresciuta): Invio a vuoto no.
+        // Codice: 0 se $? è vero, altrimenti $LASTEXITCODE se è cambiato (programma esterno), altrimenti 1 (errore di un cmdlet).
         string StartArgs()
         {
             if (shell.Id == "pwsh" || shell.Id == "powershell")
             {
                 const string script =
-                    "$global:__cpPrompt = $function:prompt; " +
-                    "function global:prompt { $e = [char]27; $p = & $global:__cpPrompt; " +
-                    "if ($PWD.Provider.Name -eq 'FileSystem') { \"$e]9;9;$($PWD.ProviderPath)$e\\\" + $p } else { $p } }";
+                    "$global:__cpPrompt = $function:prompt; $global:__cpH = -1; $global:__cpL = $global:LASTEXITCODE; " +
+                    "function global:prompt { $ok = $?; $lc = $global:LASTEXITCODE; $e = [char]27; $b = [char]7; $s = ''; " +
+                    "$h = (Get-History -Count 1).Id; if (-not $h) { $h = 0 }; " +
+                    "if ($global:__cpH -ge 0 -and $h -ne $global:__cpH) { " +
+                    "$c = if ($ok) { 0 } elseif ($lc -ne $global:__cpL -and $lc) { $lc } else { 1 }; $s += \"$e]133;D;$c$b\" }; " +
+                    "$global:__cpH = $h; $global:__cpL = $lc; " +
+                    "$p = & $global:__cpPrompt; " +
+                    "if ($PWD.Provider.Name -eq 'FileSystem') { $s += \"$e]9;9;$($PWD.ProviderPath)$e\\\" }; " +
+                    "$s + \"$e]133;A$b\" + $p + \"$e]133;B$b\" }";
                 return shell.Args + " -NoExit -EncodedCommand " + Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
             }
             return shell.Args;
@@ -173,8 +182,8 @@ namespace CorbolPrompt
             // la shell non deve credersi dentro Claude Code se l'app è stata avviata da lì
             vars.Remove("CLAUDECODE");
             vars.Remove("CLAUDE_CODE_ENTRYPOINT");
-            if (shell.Id == "cmd" && !vars.ContainsKey("PROMPT")) vars["PROMPT"] = "$E]9;9;$P$E\\$P$G";
-            else if (shell.Id == "cmd") vars["PROMPT"] = "$E]9;9;$P$E\\" + vars["PROMPT"];
+            // cmd: cartella e segni di inizio prompt / inizio comando (il codice di uscita nel prompt di cmd non c'è)
+            if (shell.Id == "cmd") vars["PROMPT"] = "$E]9;9;$P$E\\$E]133;A$E\\" + (vars.ContainsKey("PROMPT") ? vars["PROMPT"] : "$P$G") + "$E]133;B$E\\";
             var sb = new StringBuilder();
             foreach (var kv in vars) sb.Append(kv.Key).Append('=').Append(kv.Value).Append('\0');
             sb.Append('\0');

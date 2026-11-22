@@ -71,9 +71,11 @@ namespace CorbolPrompt
             Output(s.Replace("\r\n", "\n").Replace("\n", "\r\n"));
         }
 
-        void ShowPrompt()
+        // code >= 0: è appena finita una valutazione con quel codice (0 = ok, 1 = errore), segnata come in una shell (OSC 133 D)
+        void ShowPrompt(int code = -1)
         {
-            Emit(pending.Length > 0 ? PromptCont : Prompt);
+            if (pending.Length > 0) Emit(PromptCont);
+            else Emit((code >= 0 ? "\x1b]133;D;" + code + "\x07" : "") + "\x1b]133;A\x07" + Prompt + "\x1b]133;B\x07");
             MarkStart();
         }
 
@@ -96,14 +98,16 @@ namespace CorbolPrompt
                 Interp.ResetDepth();
                 Interp.AtLineStart = true;
                 bool exit = false;
+                bool init = src != null && src.StartsWith("(load \"");
+                int code = init ? -1 : 1;   // errore, salvo che la valutazione finisca bene
                 try
                 {
                     var result = Interp.EvalString(src);
                     Interp.FreshLine();
-                    if (src != null && !src.StartsWith("(load \"")) Emit("\x1b[96m" + Printer.Print(result, true) + "\x1b[0m\n");
+                    if (!init) { Emit("\x1b[96m" + Printer.Print(result, true) + "\x1b[0m\n"); code = 0; }
                 }
                 catch (LispExit) { exit = true; }
-                catch (LispInterrupted) { Interp.FreshLine(); Emit("\x1b[33m; " + L.T("interrotto", "interrupted") + "\x1b[0m\n"); }
+                catch (LispInterrupted) { Interp.FreshLine(); Emit("\x1b[33m; " + L.T("interrotto", "interrupted") + "\x1b[0m\n"); code = init ? -1 : 130; }
                 catch (LispError ex) { Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: ", "Error: ") + ex.Message + "\x1b[0m\n"); }
                 catch (ReturnFrom) { Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: return fuori da un blocco", "Error: return outside a block") + "\x1b[0m\n"); }
                 catch (ThrowTag) { Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: throw senza catch", "Error: throw without catch") + "\x1b[0m\n"); }
@@ -113,7 +117,7 @@ namespace CorbolPrompt
                 lock (edLock)
                 {
                     mode = Mode.Editing;
-                    ShowPrompt();
+                    ShowPrompt(code);
                     if (typeAhead.Length > 0)
                     {
                         string s = typeAhead.ToString();

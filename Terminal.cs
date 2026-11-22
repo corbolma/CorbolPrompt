@@ -30,6 +30,20 @@ namespace CorbolPrompt
         public Line(Cell[] c) { C = c; }
     }
 
+    // Un comando eseguito nella shell, dai segni che il prompt manda (OSC 133, "shell integration"):
+    // A = inizia il prompt, B = inizia il comando scritto dall'utente, D;codice = il comando è finito.
+    // Le righe sono indici assoluti (riga del documento + righe di cronologia eliminate).
+    class CmdMark
+    {
+        public long PromptLine = -1, InputLine = -1, EndLine = -1;
+        public int InputCol, ExitCode;
+        public bool Done, CodeKnown;   // CodeKnown: la shell ha detto il codice (D); cmd non lo dice
+        public DateTime Started = DateTime.MinValue;   // quando l'utente ha premuto Invio (lo mette la vista)
+        // fallito: codice diverso da 0, ma non l'interruzione con Ctrl+C (0xC000013A, 130)
+        public bool Failed { get { return Done && CodeKnown && ExitCode != 0 && ExitCode != -1073741510 && ExitCode != 130; } }
+        public long Top { get { return PromptLine >= 0 ? PromptLine : InputLine; } }
+    }
+
     class Terminal
     {
         public const ushort Bold = 1, Faint = 2, Italic = 4, Under = 8, Inverse = 16, Hidden = 32, Strike = 64, Wide = 128, WideTail = 256;
@@ -61,6 +75,9 @@ namespace CorbolPrompt
         public long Version;                   // cambia a ogni modifica: il disegno sa se rifare
         public event Action<string> Reply;     // risposte al programma (posizione del cursore, identità del terminale)
         public event Action TitleChanged, CwdChanged, Bell;
+        public event Action<CmdMark> CommandFinished;   // dentro il lock, dal thread che legge la sessione
+        public readonly List<CmdMark> Marks = new List<CmdMark>();
+        long AbsCursorLine { get { return Dropped + ScreenTop + CurY; } }
 
         public Terminal(int cols, int rows)
         {
@@ -138,7 +155,65 @@ namespace CorbolPrompt
         {
             Dropped += scroll.Count;
             scroll.Clear();
+            DropMarks(Dropped);
             Version++;
+        }
+
+        // Toglie i segni dei comandi che stavano nelle righe prima di "from" (righe sparite)
+        void DropMarks(long from)
+        {
+            Marks.RemoveAll(m => Math.Max(m.PromptLine, m.InputLine) < from);
+        }
+
+        // Testo di un comando: dalla posizione del segno B fino alla fine della riga logica
+        public string CommandText(CmdMark m)
+        {
+            int i = (int)(m.InputLine - Dropped);
+            var ln = DocLine(i);
+            if (ln == null) return "";
+            var sb = new StringBuilder(LineText(ln, m.InputCol, ln.C.Length, false));
+            while (ln.Wrapped && (ln = DocLine(++i)) != null) sb.Append(LineText(ln, 0, ln.C.Length, false));
+            return sb.ToString().Trim();
+        }
+
+        // Output di un comando: le righe tra quella del comando e la fine (al massimo le ultime maxLines)
+        public string CommandOutput(CmdMark m, int maxLines)
+        {
+            int from = (int)(m.InputLine - Dropped) + 1, to = (int)(m.EndLine - Dropped);
+            while (from < to && DocLine(from - 1) != null && DocLine(from - 1).Wrapped) from++;   // il comando può andare a capo
+            if (to - from > maxLines) from = to - maxLines;
+            return Text(from, to).TrimEnd('\n', ' ');
+        }
+
+        // Il comando fallito che contiene la riga (assoluta), o null
+        public CmdMark FailedAt(long line)
+        {
+            var m = CommandAt(line);
+            return m != null && m.Failed ? m : null;
+        }
+
+        // Il comando finito che contiene la riga (dal prompt alla fine dell'output), o null
+        public CmdMark CommandAt(long line)
+        {
+            for (int k = Marks.Count - 1; k >= 0; k--)
+            {
+                var m = Marks[k];
+                if (m.Done && m.InputLine >= 0 && line >= Math.Min(m.Top, m.InputLine) && line < Math.Max(m.EndLine, m.InputLine + 1)) return m;
+            }
+            return null;
+        }
+
+        // Il comando precedente (up) o successivo rispetto alla riga: per saltare da un comando all'altro
+        public CmdMark NextCommand(long line, bool up)
+        {
+            CmdMark best = null;
+            foreach (var m in Marks)
+            {
+                if (m.InputLine < 0) continue;
+                long t = m.Top;
+                if (up ? t < line && (best == null || t > best.Top) : t > line && (best == null || t < best.Top)) best = m;
+            }
+            return best;
         }
 
         // ---------- dimensioni ----------
@@ -195,6 +270,7 @@ namespace CorbolPrompt
                 int n = scroll.Count - MaxScrollback;
                 scroll.RemoveRange(0, n);
                 Dropped += n;
+                DropMarks(Dropped);
             }
         }
 
@@ -639,6 +715,8 @@ namespace CorbolPrompt
             else if (mode == 2)
             {
                 for (int y = 0; y < Rows; y++) screen[y] = new Line(Cols, Blank);
+                // schermo cancellato (cls, clear): i comandi che c'erano non ci sono più
+                if (!AltActive) { long st = Dropped + ScreenTop; Marks.RemoveAll(m => m.InputLine >= st || m.PromptLine >= st); }
             }
             wrapNext = false;
         }
@@ -724,6 +802,7 @@ namespace CorbolPrompt
                 Title = arg;
                 if (TitleChanged != null) TitleChanged();
             }
+            else if (code == "133") CommandMark(arg);
             else if (code == "9" && arg.StartsWith("9;"))
             {
                 SetCwd(arg.Substring(2).Trim('"'));
@@ -737,6 +816,46 @@ namespace CorbolPrompt
                     if (u.Scheme == "file") SetCwd(Uri.UnescapeDataString(u.AbsolutePath));
                 }
                 catch { }
+            }
+        }
+
+        void CommandMark(string arg)
+        {
+            if (AltActive || arg.Length == 0) return;
+            var last = Marks.Count > 0 ? Marks[Marks.Count - 1] : null;
+            switch (arg[0])
+            {
+                case 'A':
+                    // cmd non manda D: un prompt nuovo più in basso dopo un comando scritto vuol dire che il comando è finito
+                    if (last != null && !last.Done && last.InputLine >= 0 && AbsCursorLine > last.InputLine && CommandText(last).Length > 0)
+                    {
+                        last.Done = true;
+                        last.EndLine = AbsCursorLine + (CurX > 0 ? 1 : 0);
+                        if (CommandFinished != null) CommandFinished(last);
+                    }
+                    // prompt nuovo; se l'ultimo comando non è finito (Invio a vuoto, prompt ridisegnato) si riusa il segno
+                    if (last == null || last.Done)
+                    {
+                        last = new CmdMark();
+                        Marks.Add(last);
+                        if (Marks.Count > 3000) Marks.RemoveRange(0, Marks.Count - 3000);
+                    }
+                    last.PromptLine = AbsCursorLine;
+                    last.InputLine = -1;
+                    break;
+                case 'B':
+                    if (last != null && !last.Done) { last.InputLine = AbsCursorLine; last.InputCol = CurX; }
+                    break;
+                case 'D':
+                    if (last == null || last.Done || last.InputLine < 0) break;
+                    int c = 0;
+                    if (arg.Length > 2) int.TryParse(arg.Substring(2).Split(';')[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out c);
+                    last.Done = true;
+                    last.CodeKnown = true;
+                    last.ExitCode = c;
+                    last.EndLine = AbsCursorLine + (CurX > 0 ? 1 : 0);
+                    if (CommandFinished != null) CommandFinished(last);
+                    break;
             }
         }
 

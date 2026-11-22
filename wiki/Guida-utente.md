@@ -25,6 +25,9 @@ Il pulsante **▦** nella barra in alto (o **Ctrl+Maiusc+G**, o **⋯ → Affian
 - In cima a ogni riquadro c'è una barretta col nome: quella **verde** è la scheda attiva, su cui lavorano assistente e preferiti. Un clic in un riquadro lo rende attivo; doppio clic sulla barretta per rinominare, tasto destro per il menu della scheda.
 - Le nuove schede si aggiungono alla griglia, quelle chiuse la lasciano. Ripremendo **▦** si torna a una scheda alla volta; la scelta viene ricordata.
 
+### Scrivere in tutte le schede
+Con le schede affiancate compare il pulsante **⇶** (anche **Ctrl+Maiusc+B** o **⋯ → Scrivi in tutte le schede affiancate**): quello che scrivi o incolli nella scheda attiva arriva **a tutte le schede insieme**, così lanci lo stesso comando in più cartelle o shell. Le barrette dei riquadri diventano **arancioni** con il segno ⇶ finché è acceso; ripremi ⇶ per spegnerlo. Anche i comandi dell'assistente e i preferiti eseguiti vanno a tutte. Non viene ricordato alla riapertura: si riparte sempre spento.
+
 ## Il terminale
 È un terminale vero, come Windows Terminal: le shell girano nella console virtuale di Windows (ConPTY). Funzionano colori (16, 256 e 24 bit), programmi a schermo intero come `vi`, `less`, `htop` o `edit`, caratteri accentati ed emoji.
 
@@ -36,11 +39,43 @@ Il pulsante **▦** nella barra in alto (o **Ctrl+Maiusc+G**, o **⋯ → Affian
 | Scorrere la cronologia | rotellina, barra a destra, **Maiusc+PagSu / PagGiù**; scrivendo si torna in fondo |
 | Dimensione del carattere | **Ctrl++ / Ctrl+- / Ctrl+0** o Ctrl+rotellina; anche dal menu ⋯ |
 | Cancellare la cronologia | tasto destro → *Cancella la cronologia dello schermo* |
+| Cercare nel testo | **Ctrl+Maiusc+F** (vedi sotto) |
+| Aprire un indirizzo o un file | **Ctrl+clic** (vedi sotto) |
 
 Nei programmi a schermo intero (less, man, vim) la rotellina manda le frecce su e giù.
 
+### Cercare nel testo
+Il pulsante **🔍 Cerca** nella barra in alto, **Ctrl+Maiusc+F** (o tasto destro → *Cerca nel testo...*) apre una barra sopra il terminale; se c'è del testo selezionato diventa la ricerca. Mentre scrivi tutte le occorrenze nello schermo e nella cronologia si colorano, quella corrente in arancione, e accanto c'è il conteggio (*3 di 12*).
+- **Invio** o **↑** va al risultato precedente (più in alto), **Maiusc+Invio** o **↓** al successivo; **F3 / Maiusc+F3** fanno lo stesso anche dal terminale.
+- **Aa** distingue maiuscole e minuscole.
+- **Esc** o **✕** chiude la barra. La ricerca segue la scheda attiva e si aggiorna con l'output nuovo.
+
+### Link e percorsi cliccabili
+Passando col mouse su un **indirizzo web** (`https://...`, `www....`) o su un **percorso** che esiste (`C:\cartella\file.txt`, un percorso tra virgolette anche con spazi, o il nome di un file o di una cartella della cartella corrente, per esempio nell'elenco di `dir`) questo si sottolinea; **Ctrl+clic** lo apre:
+- gli indirizzi nel browser;
+- le cartelle in Esplora file;
+- i file con il loro programma. Programmi e script (`.exe`, `.bat`, `.ps1`...) **non vengono avviati**: si apre Esplora file con il file selezionato.
+
+`file.cs:12` (il formato degli errori dei compilatori) apre il file. Tasto destro su un link: *Apri*, *Copia il link / il percorso*, *Mostra in Esplora file*.
+
+### Comandi falliti
+In PowerShell, nel Prompt dei comandi e nel Lisp il terminale sa dove inizia e finisce ogni comando. Quando un comando **fallisce** (in PowerShell e nel Lisp), nel margine sinistro compare un **segno rosso** lungo le sue righe e in basso a destra il pulsante **✦ Spiega l'errore**:
+- il pulsante (o un clic sul segno rosso, o tasto destro → *Spiega l'errore di questo comando*) manda all'assistente il comando, il codice di uscita e il suo output, e lui spiega cosa è andato storto e propone il comando corretto come pulsante ▶;
+- il pulsante sparisce al comando successivo; i segni rossi restano finché le righe sono nella cronologia.
+
+Il Prompt dei comandi non fa sapere il codice di uscita, quindi lì i segni rossi non ci sono; in WSL e Git Bash nemmeno.
+
+### Spostarsi tra i comandi
+**Ctrl+Maiusc+↑** porta in cima allo schermo il comando precedente, **Ctrl+Maiusc+↓** il successivo (un segno azzurro nel margine indica dove sei); utile nei lunghi output. Tasto destro sulle righe di un comando: **Copia il comando** e **Copia l'output del comando** (solo il suo output, senza prompt).
+
+### Avviso a fine comando
+Quando un comando che dura almeno **10 secondi** finisce in una scheda che non stai guardando, sul nome della scheda compare un **pallino**: verde se è andato bene, rosso se è fallito; sparisce aprendo la scheda. Se CorbolPrompt è in secondo piano o ridotto a icona, la sua icona lampeggia nella barra delle applicazioni e arriva una **notifica di Windows** con il comando e la durata: un clic riporta alla scheda. Si spegne da **⋯ → Avvisa quando finisce un comando lungo**. Funziona in PowerShell, nel Prompt dei comandi e nel Lisp.
+
+### Trascinare i file
+Trascinando file o cartelle da Esplora file sul terminale se ne scrive il **percorso**, tra virgolette se serve e nel formato della shell (`/mnt/c/...` in WSL, `/c/...` in Git Bash, stringa nel Lisp). Il comando non parte: completi e premi Invio.
+
 ### Il menu del tasto destro sul terminale
-*Copia*, *Incolla*, *Seleziona tutto*, *Aggiungi ai preferiti...* (con del testo selezionato), *Spiega la selezione / lo schermo con l'assistente*, *Chiedi all'assistente...*, *Cancella la cronologia dello schermo*.
+*Apri*, *Copia il link*, *Mostra in Esplora file* (su un link), *Spiega l'errore di questo comando* (su un comando fallito), *Copia*, *Incolla*, *Seleziona tutto*, *Aggiungi ai preferiti...* (con del testo selezionato), *Cerca nel testo...*, *Spiega la selezione / lo schermo con l'assistente*, *Chiedi all'assistente...*, *Cancella la cronologia dello schermo*.
 
 ## L'assistente
 Il pannello a destra. In cima c'è sempre scritto il **servizio** in uso e, per Claude Code, **l'account** (email): clic per cambiarli.
@@ -83,8 +118,11 @@ Un piccolo Common Lisp interpretato, con comandi per il sistema: vedi la [[Guida
 | Nuova scheda, Shell predefinita | come la freccia ⌄; quale shell apre il + |
 | Impostazioni dell'assistente... | servizio, account, assistente locale |
 | Carattere più grande / più piccolo / normale | dimensione del testo del terminale |
+| Cerca nel testo... | la barra di ricerca |
+| Affianca tutte le schede, Scrivi in tutte le schede affiancate | vedi [Schede affiancate](#schede-affiancate) |
 | Lingua | cambia subito, senza chiudere le schede |
 | Suggerisci i preferiti sotto il terminale | mostra o nasconde la barra dei preferiti |
+| Avvisa quando finisce un comando lungo | pallino sulla scheda e notifica di Windows |
 | Benvenuto..., Guida, Guida al Lisp | la presentazione iniziale e queste pagine |
 | Scorciatoie da tastiera | l'elenco dei tasti |
 | Controlla aggiornamenti, Aggiorna automaticamente | vedi [[Installazione]] |
@@ -100,6 +138,11 @@ Un piccolo Common Lisp interpretato, con comandi per il sistema: vedi la [[Guida
 | Ctrl+Maiusc+A | assistente |
 | Ctrl+Maiusc+P | preferiti |
 | Ctrl+Maiusc+G | schede affiancate / una alla volta |
+| Ctrl+Maiusc+B | scrivi in tutte le schede affiancate |
+| Ctrl+Maiusc+F | cerca nel testo |
+| F3 / Maiusc+F3 | risultato precedente / successivo |
+| Ctrl+Maiusc+↑ / ↓ | comando precedente / successivo |
+| Ctrl+clic | apre l'indirizzo o il percorso sotto il mouse |
 | Ctrl+F1 | questa guida |
 | Maiusc+PagSu / PagGiù | scorre la cronologia dello schermo |
 | Ctrl++ / Ctrl+- / Ctrl+0 | dimensione del carattere |

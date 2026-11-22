@@ -25,6 +25,9 @@ The **▦** button in the top bar (or **Ctrl+Shift+G**, or **⋯ → Show all ta
 - Each pane has a bar with its name at the top: the **green** one is the active tab, which the assistant and favorites work on. Click a pane to make it active; double-click the bar to rename, right-click for the tab menu.
 - New tabs join the grid, closed ones leave it. Press **▦** again to go back to one tab at a time; the choice is remembered.
 
+### Typing in all tabs
+With the tabs side by side the **⇶** button appears (also **Ctrl+Shift+B** or **⋯ → Type in all tiled tabs**): what you type or paste in the active tab goes **to all tabs at once**, so you can run the same command in several folders or shells. The pane bars turn **orange** with the ⇶ sign while it is on; press ⇶ again to turn it off. Assistant commands and favorites you run go to all of them too. It is not remembered: it always starts off.
+
 ## The terminal
 It is a real terminal, like Windows Terminal: the shells run in the Windows virtual console (ConPTY). Colors (16, 256 and 24-bit), full-screen programs like `vi`, `less`, `htop` or `edit`, accented characters and emoji all work.
 
@@ -36,17 +39,43 @@ It is a real terminal, like Windows Terminal: the shells run in the Windows virt
 | Scroll the history | mouse wheel, scrollbar on the right, **Shift+PgUp / PgDn**; typing goes back to the bottom |
 | Text size | **Ctrl++ / Ctrl+- / Ctrl+0** or Ctrl+wheel; also from the ⋯ menu |
 | Clear the history | right click → *Clear the screen history* |
+| Find text | **Ctrl+Shift+F** (see below) |
+| Open an address or a file | **Ctrl+click** (see below) |
 
 In full-screen programs (less, man, vim) the mouse wheel sends the up and down arrows.
 
-### Tabs side by side
-The **▦** button in the top bar (or **Ctrl+Shift+G**, or **⋯ → Show all tabs side by side**) shows all tabs together, in a grid of panes: 2 side by side, 4 in 2×2, and so on (the last row may have wider panes).
-- **Drag the borders between panes** to resize them; each shell gets the new size.
-- Each pane has a bar with its name at the top: the **green** one is the active tab, which the assistant and favorites work on. Click a pane to make it active; double-click the bar to rename, right-click for the tab menu.
-- New tabs join the grid, closed ones leave it. Press **▦** again to go back to one tab at a time; the choice is remembered.
+### Finding text
+The **🔍 Find** button in the top bar, **Ctrl+Shift+F** (or right click → *Find in text...*) opens a bar above the terminal; selected text becomes the search. As you type, every match on the screen and in the history is colored, the current one in orange, with the count next to it (*3 of 12*).
+- **Enter** or **↑** goes to the previous result (higher up), **Shift+Enter** or **↓** to the next; **F3 / Shift+F3** do the same from the terminal too.
+- **Aa** matches case.
+- **Esc** or **✕** closes the bar. The search follows the active tab and updates with new output.
+
+### Clickable links and paths
+Hovering a **web address** (`https://...`, `www....`) or a **path** that exists (`C:\folder\file.txt`, a quoted path even with spaces, or the name of a file or folder in the current folder, for example in a `dir` listing) underlines it; **Ctrl+click** opens it:
+- addresses in the browser;
+- folders in File Explorer;
+- files with their program. Programs and scripts (`.exe`, `.bat`, `.ps1`...) are **not started**: File Explorer opens with the file selected.
+
+`file.cs:12` (the compiler error format) opens the file. Right-click a link: *Open*, *Copy link / path*, *Show in File Explorer*.
+
+### Failed commands
+In PowerShell, Command Prompt and Lisp the terminal knows where each command starts and ends. When a command **fails** (in PowerShell and Lisp), a **red mark** appears in the left margin along its lines and the **✦ Explain the error** button appears at the bottom right:
+- the button (or a click on the red mark, or right click → *Explain this command's error*) sends the assistant the command, its exit code and its output; it explains what went wrong and suggests the corrected command as a ▶ button;
+- the button disappears with the next command; the red marks stay while the lines are in the history.
+
+Command Prompt does not report the exit code, so there are no red marks there; nor in WSL and Git Bash.
+
+### Moving between commands
+**Ctrl+Shift+↑** brings the previous command to the top of the screen, **Ctrl+Shift+↓** the next one (a light blue mark in the margin shows where you are); handy with long output. Right-click a command's lines: **Copy the command** and **Copy the command's output** (only its output, without the prompt).
+
+### Notification when a command finishes
+When a command that takes at least **10 seconds** finishes in a tab you are not looking at, a **dot** appears on the tab name: green if it succeeded, red if it failed; it goes away when you open the tab. If CorbolPrompt is in the background or minimized, its taskbar icon flashes and a **Windows notification** shows the command and how long it took: click it to go back to the tab. Turn it off with **⋯ → Notify when a long command finishes**. Works in PowerShell, Command Prompt and Lisp.
+
+### Dragging files
+Dragging files or folders from File Explorer onto the terminal types their **path**, quoted when needed and in the shell's format (`/mnt/c/...` in WSL, `/c/...` in Git Bash, a string in Lisp). The command does not run: complete it and press Enter.
 
 ## The terminal's right-click menu
-*Copy*, *Paste*, *Select all*, *Add to favorites...* (with text selected), *Explain the selection / the screen with the assistant*, *Ask the assistant...*, *Clear the screen history*.
+*Open*, *Copy link*, *Show in File Explorer* (on a link), *Explain this command's error* (on a failed command), *Copy*, *Paste*, *Select all*, *Add to favorites...* (with text selected), *Find in text...*, *Explain the selection / the screen with the assistant*, *Ask the assistant...*, *Clear the screen history*.
 
 ## The assistant
 The panel on the right. At the top it always shows the **service** in use and, for Claude Code, the **account** (email): click to change them.
@@ -89,8 +118,11 @@ A small interpreted Common Lisp, with system commands: see the [[Lisp guide|Lisp
 | New tab, Default shell | like the ⌄ arrow; which shell the + opens |
 | Assistant settings... | service, account, local assistant |
 | Larger / Smaller / Normal text | terminal text size |
+| Find in text... | the search bar |
+| Show all tabs side by side, Type in all tiled tabs | see [Tabs side by side](#tabs-side-by-side) |
 | Language | changes right away, without closing the tabs |
 | Suggest favorites below the terminal | shows or hides the favorites bar |
+| Notify when a long command finishes | dot on the tab and Windows notification |
 | Welcome tour..., User guide, Lisp guide | the first-run tour and these pages |
 | Keyboard shortcuts | the list of keys |
 | Check for updates, Update automatically | see [[Installation]] |
@@ -106,6 +138,11 @@ A small interpreted Common Lisp, with system commands: see the [[Lisp guide|Lisp
 | Ctrl+Shift+A | assistant |
 | Ctrl+Shift+P | favorites |
 | Ctrl+Shift+G | tabs side by side / one at a time |
+| Ctrl+Shift+B | type in all tiled tabs |
+| Ctrl+Shift+F | find in text |
+| F3 / Shift+F3 | previous / next result |
+| Ctrl+Shift+↑ / ↓ | previous / next command |
+| Ctrl+click | open the address or path under the mouse |
 | Ctrl+F1 | this guide |
 | Shift+PgUp / PgDn | scroll the screen history |
 | Ctrl++ / Ctrl+- / Ctrl+0 | text size |
