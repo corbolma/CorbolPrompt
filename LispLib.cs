@@ -13,6 +13,36 @@ using System.Threading;
 
 namespace CorbolPrompt
 {
+    // Stream di testo: in uscita su una stringa o su un file, in ingresso da una stringa o da un file.
+    // Il terminale non è uno stream: t e nil (o *standard-output* che vale t) scrivono lì.
+    sealed class LispStream
+    {
+        public TextWriter W;          // uscita
+        public TextReader R;          // ingresso (read lo sostituisce con il resto del testo)
+        public IDisposable File;      // il file da chiudere, se c'è
+        public string Name;
+        public bool AtLineStart = true;
+        public bool Closed;
+
+        public void Write(string s)
+        {
+            if (Closed) throw new LispError("lo stream è chiuso: " + Name);
+            if (string.IsNullOrEmpty(s)) return;
+            W.Write(s);
+            AtLineStart = s[s.Length - 1] == '\n';
+        }
+
+        public void Close()
+        {
+            if (Closed) return;
+            Closed = true;
+            if (W != null) W.Flush();
+            if (File != null) File.Dispose();
+        }
+
+        public override string ToString() { return "#<stream " + Name + ">"; }
+    }
+
     partial class Interp
     {
         static string Str(object o)
@@ -171,13 +201,7 @@ namespace CorbolPrompt
             Def("boundp", 1, 1, a => Bool(a[0] is Sym && ((Sym)a[0]).Value != Sym.Unbound));
             Def("fboundp", 1, 1, a => Bool(a[0] is Sym && ((Sym)a[0]).Function != null));
             Def("type-of", 1, 1, a => Intern(TypeName(a[0])));
-            Def("typep", 2, 2, a =>
-            {
-                string want = Str(a[1]), have = TypeName(a[0]);
-                return Bool(want == have || want == "t" || (want == "number" && Num.Is(a[0])) || (want == "list" && (a[0] == null || a[0] is Cons)) ||
-                            (want == "sequence" && (a[0] == null || a[0] is Cons || a[0] is string || a[0] is object[])) ||
-                            (want == "function" && a[0] is LispFn) || (want == "real" && Num.Is(a[0])) || (want == "symbol" && (a[0] == null || a[0] is Sym)));
-            });
+            Def("typep", 2, 3, a => Bool(TypeP(a[0], a[1])));
 
             // ---- liste ----
             Def("cons", 2, 2, a => new Cons(a[0], a[1]));
@@ -556,27 +580,34 @@ namespace CorbolPrompt
             Def("warn", 1, -1, a => { FreshLine(); Write("Attenzione: " + Format(Str(a[0]), a.Skip(1).ToArray()) + "\n"); return null; });
 
             // ---- uscita ----
-            Def("print", 1, 2, a => { Write("\n" + Printer.Print(a[0], true) + " "); return a[0]; });
-            Def("prin1", 1, 2, a => { Write(Printer.Print(a[0], true)); return a[0]; });
-            Def("princ", 1, 2, a => { Write(Printer.Print(a[0], false)); return a[0]; });
-            Def("write", 1, -1, a => { Write(Printer.Print(a[0], true)); return a[0]; });
-            Def("pprint", 1, 2, a => { Write("\n" + Printer.Print(a[0], true)); return null; });
-            Def("terpri", 0, 1, a => { Write("\n"); return null; });
-            Def("fresh-line", 0, 1, a => { bool was = !AtLineStart; FreshLine(); return Bool(was); });
-            Def("write-line", 1, 2, a => { Write(Str(a[0]) + "\n"); return a[0]; });
-            Def("write-string", 1, 2, a => { Write(Str(a[0])); return a[0]; });
-            Def("write-char", 1, 2, a => { Write(Chr(a[0]).ToString()); return a[0]; });
-            Def("finish-output", 0, 1, a => null);
-            Def("force-output", 0, 1, a => null);
+            // lo stream è l'argomento facoltativo dopo l'oggetto; t e nil vogliono dire *standard-output*
+            Func<object[], int, object> sa = (a, i) => a.Length > i ? a[i] : null;
+            Def("print", 1, 2, a => { WriteTo(sa(a, 1), "\n" + Printer.Print(a[0], true) + " "); return a[0]; });
+            Def("prin1", 1, 2, a => { WriteTo(sa(a, 1), Printer.Print(a[0], true)); return a[0]; });
+            Def("princ", 1, 2, a => { WriteTo(sa(a, 1), Printer.Print(a[0], false)); return a[0]; });
+            Def("write", 1, -1, a => { WriteTo(KeyArg(a, 1, ":stream", null), Printer.Print(a[0], KeyArg(a, 1, ":escape", T) != null)); return a[0]; });
+            Def("pprint", 1, 2, a => { WriteTo(sa(a, 1), "\n" + Printer.Print(a[0], true)); return null; });
+            Def("terpri", 0, 1, a => { WriteTo(sa(a, 0), "\n"); return null; });
+            Def("fresh-line", 0, 1, a => Bool(FreshLineTo(sa(a, 0))));
+            Def("write-line", 1, 2, a => { WriteTo(sa(a, 1), Str(a[0]) + "\n"); return a[0]; });
+            Def("write-string", 1, 2, a => { WriteTo(sa(a, 1), Str(a[0])); return a[0]; });
+            Def("write-char", 1, 2, a => { WriteTo(sa(a, 1), Chr(a[0]).ToString()); return a[0]; });
+            Def("finish-output", 0, 1, a => { var s = OutStream(sa(a, 0)); if (s != null) s.W.Flush(); return null; });
+            Def("force-output", 0, 1, a => { var s = OutStream(sa(a, 0)); if (s != null) s.W.Flush(); return null; });
             Def("format", 2, -1, a =>
             {
                 string s = Format(Str(a[1]), a.Skip(2).ToArray());
                 if (a[0] == null) return s;
-                Write(s);
+                WriteTo(a[0], s);
                 return null;
             });
             Def("read-line", 0, -1, a =>
             {
+                if (a.Length > 0 && a[0] != null && a[0] != T)
+                {
+                    var line = InStream(a[0], "read-line").R.ReadLine();
+                    return line ?? AtEof(a, 1, "read-line");
+                }
                 if (ReadLineHook == null) throw new LispError("read-line: nessun input disponibile");
                 var s = ReadLineHook();
                 if (s == null) throw new LispInterrupted();
@@ -585,6 +616,18 @@ namespace CorbolPrompt
             });
             Def("read", 0, -1, a =>
             {
+                if (a.Length > 0 && a[0] != null && a[0] != T)
+                {
+                    // legge una forma da uno stream: il resto del testo torna nello stream
+                    var ls = InStream(a[0], "read");
+                    string rest = ls.R.ReadToEnd();
+                    var rd = new Reader(this, rest);
+                    object form;
+                    try { form = rd.Read(); }
+                    catch (LispIncomplete) { throw new LispError("read: forma incompleta alla fine dello stream"); }
+                    ls.R = new StringReader(rest.Substring(rd.Pos));
+                    return form == Reader.Eof ? AtEof(a, 1, "read") : form;
+                }
                 if (ReadLineHook == null) throw new LispError("read: nessun input disponibile");
                 var s = ReadLineHook();
                 if (s == null) throw new LispInterrupted();
@@ -627,6 +670,7 @@ namespace CorbolPrompt
             if (o is LispFn) return "function";
             if (o is Dictionary<object, object>) return "hash-table";
             if (o is LispStruct) return ((LispStruct)o).Type.Name;
+            if (o is LispStream) return "stream";
             return "t";
         }
 
@@ -1047,6 +1091,297 @@ namespace CorbolPrompt
             }
         }
 
+        // ---------- stream ----------
+
+        Sym stdOut;   // *standard-output*: t (il terminale) o uno stream
+
+        LispStream OutStream(object stream)
+        {
+            if (stream == null || stream == T) stream = stdOut.Value;
+            if (stream == null || stream == T || stream == Sym.Unbound) return null;
+            var ls = stream as LispStream;
+            if (ls == null) throw new LispError("non è uno stream: " + Printer.Print(stream, true));
+            if (ls.W == null) throw new LispError("non è uno stream di uscita: " + ls);
+            return ls;
+        }
+
+        void WriteTo(object stream, string s)
+        {
+            var ls = OutStream(stream);
+            if (ls == null) Write(s); else ls.Write(s);
+        }
+
+        // Va a capo se non si è già all'inizio della riga; dice se l'ha fatto
+        bool FreshLineTo(object stream)
+        {
+            var ls = OutStream(stream);
+            bool atStart = ls == null ? AtLineStart : ls.AtLineStart;
+            if (!atStart) WriteTo(stream, "\n");
+            return !atStart;
+        }
+
+        static LispStream InStream(object stream, string who)
+        {
+            var ls = stream as LispStream;
+            if (ls == null || ls.R == null) throw new LispError(who + ": non è uno stream di ingresso: " + Printer.Print(stream, true));
+            if (ls.Closed) throw new LispError(who + ": lo stream è chiuso: " + ls.Name);
+            return ls;
+        }
+
+        // Fine dello stream: a[i] = eof-error-p (se manca, errore), a[i+1] = il valore da restituire
+        static object AtEof(object[] a, int i, string who)
+        {
+            if (a.Length <= i || a[i] != null) throw new LispError(who + ": fine dello stream");
+            return a.Length > i + 1 ? a[i + 1] : null;
+        }
+
+        LispStream Open(object[] a)
+        {
+            string p = FullPath(Str(a[0]));
+            var dirArg = KeyArg(a, 1, ":direction", null);
+            string dir = dirArg == null ? "input" : Str(dirArg);
+            object ine = KeyArg(a, 1, ":if-does-not-exist", Sym.Unbound);
+            bool exists = File.Exists(p);
+            if (dir == "output" || dir == "io")
+            {
+                object ie = KeyArg(a, 1, ":if-exists", Sym.Unbound);
+                string ifExists = ie == Sym.Unbound ? "error" : ie == null ? "nil" : Str(ie);
+                if (exists && ifExists == "nil") return null;
+                if (exists && ifExists == "error") throw new LispError("il file esiste già: " + p + " (usa :if-exists :supersede o :append)");
+                if (!exists && ine == null) return null;
+                if (!exists && ine is Sym && Str(ine) == "error") throw new LispError("file inesistente: " + p);
+                var w = new StreamWriter(p, exists && ifExists == "append", new UTF8Encoding(false));
+                return new LispStream { W = w, File = w, Name = p };
+            }
+            if (dir != "input" && dir != "probe") throw new LispError("open: :direction può essere :input, :output o :io, non " + dir);
+            if (!exists)
+            {
+                if (ine == null) return null;
+                throw new LispError("file inesistente: " + p);
+            }
+            if (dir == "probe") return new LispStream { Name = p, Closed = true };
+            var r = new StreamReader(p, Encoding.UTF8, true);
+            return new LispStream { R = r, File = r, Name = p };
+        }
+
+        // ---------- tipi ----------
+
+        bool TypeP(object x, object type)
+        {
+            var tc = type as Cons;
+            if (tc != null)
+            {
+                string h = Str(tc.Car);
+                var args = ListItems(tc.Cdr);
+                switch (h)
+                {
+                    case "or": return args.Any(t => TypeP(x, t));
+                    case "and": return args.All(t => TypeP(x, t));
+                    case "not": return args.Count == 1 && !TypeP(x, args[0]);
+                    case "member": return args.Any(v => IsEql(v, x));
+                    case "eql": return args.Count == 1 && IsEql(args[0], x);
+                    case "satisfies": return args.Count == 1 && Truthy(Call(args[0], x));
+                    case "mod": return (x is long || x is BigInteger) && Num.Compare(x, 0L) >= 0 && Num.Compare(x, args[0]) < 0;
+                    case "integer": case "float": case "double-float": case "single-float": case "real": case "number": case "rational":
+                        if (!TypeP(x, tc.Car)) return false;
+                        return InRange(x, args.Count > 0 ? args[0] : null, true) && InRange(x, args.Count > 1 ? args[1] : null, false);
+                    case "unsigned-byte": case "signed-byte": case "string": case "simple-string": case "vector": case "simple-vector":
+                    case "array": case "simple-array": case "cons":
+                        return TypeP(x, tc.Car);   // dimensioni e tipi degli elementi non si controllano
+                    case "function": return x is LispFn;
+                }
+                throw new LispError("tipo non riconosciuto: " + Printer.Print(type, true));
+            }
+            string want = Str(type);
+            switch (want)
+            {
+                case "t": return true;
+                case "nil": return false;
+                case "null": return x == null;
+                case "integer": return x is long || x is BigInteger;
+                case "fixnum": return x is long;
+                case "bignum": return x is BigInteger;
+                case "rational": return x is long || x is BigInteger;
+                case "float": case "double-float": case "single-float": case "short-float": case "long-float": return x is double;
+                case "number": case "real": return Num.Is(x);
+                case "bit": return x is long && ((long)x == 0 || (long)x == 1);
+                case "unsigned-byte": return (x is long || x is BigInteger) && Num.Compare(x, 0L) >= 0;
+                case "signed-byte": return x is long || x is BigInteger;
+                case "string": case "simple-string": case "base-string": return x is string;
+                case "character": case "base-char": case "standard-char": return x is char;
+                case "symbol": return x == null || x is Sym;
+                case "keyword": return x is Sym && ((Sym)x).IsKeyword;
+                case "boolean": return x == null || x == T;
+                case "cons": return x is Cons;
+                case "list": return x == null || x is Cons;
+                case "atom": return !(x is Cons);
+                case "vector": case "array": case "simple-array": return x is object[] || x is string;
+                case "simple-vector": return x is object[];
+                case "sequence": return x == null || x is Cons || x is string || x is object[];
+                case "function": case "compiled-function": return x is LispFn;
+                case "hash-table": return x is Dictionary<object, object>;
+                case "stream": return x is LispStream;
+                case "structure-object": return x is LispStruct;
+                case "condition": case "error": case "simple-error": return x is LispCondition;
+            }
+            return TypeName(x) == want;   // nome di una struttura (defstruct)
+        }
+
+        // Estremo di un intervallo di tipo: * o assente = nessun limite, (n) = escluso
+        static bool InRange(object x, object bound, bool lower)
+        {
+            if (bound == null || (bound is Sym && ((Sym)bound).Name == "*")) return true;
+            bool exclusive = bound is Cons;
+            if (exclusive) bound = ((Cons)bound).Car;
+            int cmp = Num.Compare(x, bound);
+            return lower ? (exclusive ? cmp > 0 : cmp >= 0) : (exclusive ? cmp < 0 : cmp <= 0);
+        }
+
+        // ---------- insiemi e alberi ----------
+
+        // :test e :key per gli insiemi: la chiave si applica a entrambi gli elementi
+        Func<object, object, bool> SetTest(object[] a, int from)
+        {
+            var test = KeyArg(a, from, ":test", null);
+            var k = KeyFn(a, from);
+            if (test == null) return (x, y) => { var kx = k(x); var ky = k(y); return IsEql(kx, ky) || (kx is string && IsEqual(kx, ky)); };
+            return (x, y) => Truthy(Call(test, k(x), k(y)));
+        }
+
+        static object SubstTree(object tree, Func<object, bool> match, Func<object, object> replacement)
+        {
+            if (match(tree)) return replacement(tree);
+            var c = tree as Cons;
+            if (c == null) return tree;
+            return new Cons(SubstTree(c.Car, match, replacement), SubstTree(c.Cdr, match, replacement));
+        }
+
+        bool TreeEqual(object x, object y, Func<object, object, bool> test)
+        {
+            var cx = x as Cons; var cy = y as Cons;
+            if (cx != null || cy != null) return cx != null && cy != null && TreeEqual(cx.Car, cy.Car, test) && TreeEqual(cx.Cdr, cy.Cdr, test);
+            return test(x, y);
+        }
+
+        // Funzioni aggiunte dopo: insiemi, liste, stream e file
+        void MoreBuiltins()
+        {
+            stdOut = Intern("*standard-output*");
+            stdOut.Value = T; stdOut.Special = true;
+
+            // ---- insiemi ----
+            Def("union", 2, -1, a =>
+            {
+                var t = SetTest(a, 2); var l2 = ListItems(a[1]);
+                return ToList(ListItems(a[0]).Where(x => !l2.Any(y => t(x, y))).Concat(l2).ToList(), null);
+            });
+            Def("intersection", 2, -1, a => { var t = SetTest(a, 2); var l2 = ListItems(a[1]); return ToList(ListItems(a[0]).Where(x => l2.Any(y => t(x, y))).ToList(), null); });
+            Def("set-difference", 2, -1, a => { var t = SetTest(a, 2); var l2 = ListItems(a[1]); return ToList(ListItems(a[0]).Where(x => !l2.Any(y => t(x, y))).ToList(), null); });
+            Def("set-exclusive-or", 2, -1, a =>
+            {
+                var t = SetTest(a, 2); var l1 = ListItems(a[0]); var l2 = ListItems(a[1]);
+                return ToList(l1.Where(x => !l2.Any(y => t(x, y))).Concat(l2.Where(y => !l1.Any(x => t(x, y)))).ToList(), null);
+            });
+            Def("subsetp", 2, -1, a => { var t = SetTest(a, 2); var l2 = ListItems(a[1]); return Bool(ListItems(a[0]).All(x => l2.Any(y => t(x, y)))); });
+            Def("adjoin", 2, -1, a => { var t = SetTest(a, 2); return ListItems(a[1]).Any(y => t(a[0], y)) ? a[1] : new Cons(a[0], a[1]); });
+            Alias("nunion", "union"); Alias("nintersection", "intersection"); Alias("nset-difference", "set-difference"); Alias("nset-exclusive-or", "set-exclusive-or");
+
+            // ---- liste e alberi ----
+            Def("member-if", 2, -1, a => { var k = KeyFn(a, 2); for (object l = a[1]; l is Cons; l = ((Cons)l).Cdr) if (Truthy(Call(a[0], k(((Cons)l).Car)))) return l; return null; });
+            Def("member-if-not", 2, -1, a => { var k = KeyFn(a, 2); for (object l = a[1]; l is Cons; l = ((Cons)l).Cdr) if (!Truthy(Call(a[0], k(((Cons)l).Car)))) return l; return null; });
+            Def("assoc-if", 2, -1, a => { var k = KeyFn(a, 2); return ListItems(a[1]).OfType<Cons>().FirstOrDefault(c => Truthy(Call(a[0], k(c.Car)))); });
+            Def("assoc-if-not", 2, -1, a => { var k = KeyFn(a, 2); return ListItems(a[1]).OfType<Cons>().FirstOrDefault(c => !Truthy(Call(a[0], k(c.Car)))); });
+            Def("rassoc-if", 2, -1, a => { var k = KeyFn(a, 2); return ListItems(a[1]).OfType<Cons>().FirstOrDefault(c => Truthy(Call(a[0], k(c.Cdr)))); });
+            Def("rassoc-if-not", 2, -1, a => { var k = KeyFn(a, 2); return ListItems(a[1]).OfType<Cons>().FirstOrDefault(c => !Truthy(Call(a[0], k(c.Cdr)))); });
+            Def("copy-alist", 1, 1, a => ToList(ListItems(a[0]).Select(e => e is Cons ? new Cons(((Cons)e).Car, ((Cons)e).Cdr) : e).ToList(), null));
+            Def("subst", 3, -1, a => { var t = TestOf(a, 3); return SubstTree(a[2], x => t(a[1], x), x => a[0]); });
+            Def("subst-if", 3, -1, a => { var k = KeyFn(a, 3); return SubstTree(a[2], x => Truthy(Call(a[1], k(x))), x => a[0]); });
+            Def("subst-if-not", 3, -1, a => { var k = KeyFn(a, 3); return SubstTree(a[2], x => !Truthy(Call(a[1], k(x))), x => a[0]); });
+            Def("sublis", 2, -1, a =>
+            {
+                var t = TestOf(a, 2);
+                var alist = ListItems(a[0]).OfType<Cons>().ToList();
+                Func<object, Cons> find = x => alist.FirstOrDefault(e => t(e.Car, x));
+                return SubstTree(a[1], x => find(x) != null, x => find(x).Cdr);
+            });
+            Alias("nsubst", "subst"); Alias("nsubst-if", "subst-if"); Alias("nsubst-if-not", "subst-if-not"); Alias("nsublis", "sublis");
+            Def("tree-equal", 2, -1, a =>
+            {
+                var test = KeyArg(a, 2, ":test", null);
+                return Bool(TreeEqual(a[0], a[1], test == null ? (Func<object, object, bool>)IsEql : (x, y) => Truthy(Call(test, x, y))));
+            });
+            // mapl e mapcon: come maplist, ma sulle code delle liste; mapl restituisce la prima lista, mapcon unisce i risultati
+            Func<object[], List<object>> mapTails = a =>
+            {
+                var tails = a.Skip(1).ToArray();
+                var results = new List<object>();
+                while (tails.All(t => t is Cons))
+                {
+                    results.Add(Call(a[0], tails));
+                    for (int i = 0; i < tails.Length; i++) tails[i] = ((Cons)tails[i]).Cdr;
+                }
+                return results;
+            };
+            Def("mapl", 2, -1, a => { mapTails(a); return a[1]; });
+            Def("mapcon", 2, -1, a => ToList(mapTails(a).SelectMany(ListItems).ToList(), null));
+
+            // ---- stream e file ----
+            Def("make-string-output-stream", 0, -1, a => new LispStream { W = new StringWriter(), Name = "string-output" });
+            Def("get-output-stream-string", 1, 1, a =>
+            {
+                var ls = a[0] as LispStream;
+                var sw = ls != null ? ls.W as StringWriter : null;
+                if (sw == null) throw new LispError("get-output-stream-string: serve uno stream fatto da make-string-output-stream");
+                string s = sw.ToString();
+                sw.GetStringBuilder().Clear();
+                return s;
+            });
+            Def("make-string-input-stream", 1, 3, a =>
+            {
+                string s = Str(a[0]);
+                int start = a.Length > 1 && a[1] != null ? Num.ToInt(a[1]) : 0;
+                int end = a.Length > 2 && a[2] != null ? Num.ToInt(a[2]) : s.Length;
+                return new LispStream { R = new StringReader(s.Substring(start, end - start)), Name = "string-input" };
+            });
+            Def("open", 1, -1, a => Open(a));
+            Def("close", 1, -1, a => { var ls = a[0] as LispStream; if (ls == null) return null; ls.Close(); return T; });
+            Def("streamp", 1, 1, a => Bool(a[0] is LispStream));
+            Def("input-stream-p", 1, 1, a => Bool(a[0] is LispStream && ((LispStream)a[0]).R != null));
+            Def("output-stream-p", 1, 1, a => Bool(a[0] is LispStream && ((LispStream)a[0]).W != null));
+            Def("open-stream-p", 1, 1, a => Bool(a[0] is LispStream && !((LispStream)a[0]).Closed));
+            Def("read-char", 0, -1, a =>
+            {
+                if (a.Length == 0 || a[0] == null || a[0] == T)
+                {
+                    // dalla tastiera: si legge una riga e se ne prende il primo carattere
+                    if (ReadLineHook == null) throw new LispError("read-char: nessun input disponibile");
+                    var line = ReadLineHook();
+                    if (line == null) throw new LispInterrupted();
+                    AtLineStart = true;
+                    return line.Length > 0 ? line[0] : '\n';
+                }
+                int ch = InStream(a[0], "read-char").R.Read();
+                return ch < 0 ? AtEof(a, 1, "read-char") : (object)(char)ch;
+            });
+            Def("peek-char", 0, -1, a =>
+            {
+                var ls = InStream(a.Length > 1 ? a[1] : null, "peek-char");
+                if (a.Length > 0 && a[0] == T) while (ls.R.Peek() >= 0 && char.IsWhiteSpace((char)ls.R.Peek())) ls.R.Read();
+                int ch = ls.R.Peek();
+                return ch < 0 ? AtEof(a, 2, "peek-char") : (object)(char)ch;
+            });
+            Def("unread-char", 1, 2, a =>
+            {
+                var ls = InStream(a.Length > 1 ? a[1] : null, "unread-char");
+                ls.R = new StringReader(Chr(a[0]) + ls.R.ReadToEnd());
+                return null;
+            });
+            Def("listen", 0, 1, a => Bool(a.Length > 0 && a[0] is LispStream && ((LispStream)a[0]).R != null && ((LispStream)a[0]).R.Peek() >= 0));
+            Def("loop-finish", 0, 0, a => { throw new LoopEnd(); });
+        }
+
+        void Alias(string name, string existing) { Intern(name).Function = Intern(existing).Function; }
+
         // Funzioni scritte in Lisp
         void Prelude()
         {
@@ -1056,6 +1391,35 @@ namespace CorbolPrompt
 (defun flatten (x) (cond ((null x) nil) ((atom x) (list x)) (t (append (flatten (car x)) (flatten (cdr x))))))
 (defun compose (&rest fns) (lambda (x) (reduce (lambda (acc f) (funcall f acc)) (reverse fns) :initial-value x)))
 (defun alist-get (key alist) (cdr (assoc key alist :test #'equal)))
+(defmacro typecase (keyform &rest clauses)
+  (let ((k (gensym)))
+    `(let ((,k ,keyform))
+       (cond ,@(mapcar (lambda (c) (list* (if (member (car c) '(t otherwise)) t (list 'typep k (list 'quote (car c)))) nil (cdr c))) clauses)))))
+(defmacro etypecase (keyform &rest clauses)
+  (let ((k (gensym)))
+    `(let ((,k ,keyform))
+       (typecase ,k ,@clauses (t (error ""etypecase: ~s non è di nessuno dei tipi ~s"" ,k ',(mapcar #'car clauses)))))))
+(defmacro ctypecase (&rest args) `(etypecase ,@args))
+(defmacro check-type (place type &optional desc)
+  `(unless (typep ,place ',type) (error ""~a vale ~s, che non è di tipo ~a"" ',place ,place ,(or desc (list 'quote type)))))
+(defmacro rotatef (&rest places)
+  (when (cdr places)
+    (let ((tmp (gensym)) (pairs nil))
+      (loop for tail on (append places (list tmp)) while (cdr tail) do (push (car tail) pairs) (push (cadr tail) pairs))
+      `(let ((,tmp ,(car places))) (setf ,@(nreverse pairs)) nil))))
+(defmacro shiftf (&rest args)
+  (let ((tmp (gensym)) (pairs nil))
+    (loop for tail on args while (cdr tail) do (push (car tail) pairs) (push (cadr tail) pairs))
+    `(let ((,tmp ,(car args))) (setf ,@(nreverse pairs)) ,tmp)))
+(defmacro with-output-to-string (spec &body body)
+  `(let ((,(car spec) (make-string-output-stream))) ,@body (get-output-stream-string ,(car spec))))
+(defmacro with-input-from-string (spec &body body)
+  `(let ((,(car spec) (make-string-input-stream ,(cadr spec)))) ,@body))
+(defmacro with-open-file (spec &body body)
+  (let ((v (car spec)))
+    `(let ((,v (open ,@(cdr spec)))) (unwind-protect (progn ,@body) (when ,v (close ,v))))))
+(defmacro with-open-stream (spec &body body)
+  `(let ((,(car spec) ,(cadr spec))) (unwind-protect (progn ,@body) (close ,(car spec)))))
 ");
         }
 

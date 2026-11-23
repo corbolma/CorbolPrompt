@@ -59,7 +59,9 @@ Variables made with `defvar` and `defparameter` are *special* (dynamic), as in C
 `(declaim (special x))` also makes a variable special, and `(progv '(a b) '(1 2) ...)` binds symbols chosen while the program runs.
 
 ## Control
-`if`, `when`, `unless`, `cond`, `case`/`ecase` (with `otherwise`), `and`, `or`, `not`, `progn`, `prog1`, `block`/`return-from`/`return`, `catch`/`throw`, `unwind-protect`.
+`if`, `when`, `unless`, `cond`, `case`/`ecase` (with `otherwise`), `and`, `or`, `not`, `progn`, `prog1`, `block`/`return-from`/`return`, `catch`/`throw`, `unwind-protect`, `typecase`/`etypecase` (types: `integer`, `string`, `(or symbol character)`, `(integer 0 10)`, `(member a b)`, structure names…), `check-type`.
+
+Assignment: `setq`/`setf` (on variables, `car`, `cdr`, `cadr` and the other `c…r`, `nth`, `first` … `tenth`, `gethash`, `aref`, structure slots), `psetq`/`psetf` (in parallel: `(psetq a b b a)` swaps), `rotatef`, `shiftf`, `incf`, `decf`.
 
 Loops: `dolist`, `dotimes`, `do`/`do*`, and `loop`:
 
@@ -71,11 +73,16 @@ Loops: `dolist`, `dotimes`, `do`/`do*`, and `loop`:
 (loop for i from 10 downto 0 by 2 do (print i))
 (loop with s = 0 for i below 5 do (incf s i) finally (return s))
 (loop for x in list when (evenp x) collect x into evens finally (return evens))
+(loop for x in '(2 4 6) always (evenp x))         ; → t  (never and thereis too)
+(loop for k being the hash-keys of h using (hash-value v) collect (cons k v))
+(loop named outer for i from 1 do (loop for j from 1 do (when (= (* i j) 6) (return-from outer (list i j)))))
 ```
-`loop` clauses: `for … in / on / across / from / to / upto / below / downto / above / by / = … then`, `with`, `repeat`, `while`, `until`, `do`, `collect`, `append`, `sum`, `count`, `maximize`, `minimize`, `into`, `when` / `if` / `unless` (with `and` / `else` / `end`), `return`, `initially`, `finally`. A `loop` without keywords repeats its body until it meets `return`.
+`loop` clauses: `for … in / on / across / from / to / upto / below / downto / above / by / = … then`, `with`, `repeat`, `while`, `until`, `do`, `collect`, `append`, `sum`, `count`, `maximize`, `minimize`, `into`, `when` / `if` / `unless` (with `and` / `else` / `end`), `return`, `always`, `never`, `thereis`, `named`, `initially`, `finally`; `for … being the hash-keys / hash-values of … using (hash-value v)` for hash tables; `(loop-finish)` ends the loop through `finally`. A `loop` without keywords repeats its body until it meets `return`.
 
 ## Lists and sequences
-`car`, `cdr`, `cons`, `list`, `list*`, `append`, `reverse`, `length`, `nth`, `nthcdr`, `first` … `tenth`, `last`, `butlast`, `member`, `assoc`, `rassoc`, `getf`, `acons`, `copy-list`, `push`, `pushnew`, `pop`, `mapcar`, `mapc`, `mapcan`, `maplist`, `map`, `reduce`, `remove`, `remove-if`, `remove-if-not`, `remove-duplicates`, `find`, `find-if`, `position`, `count`, `count-if`, `every`, `some`, `sort` (stable), `subseq`, `concatenate`, `coerce`, `search`, `elt`. Many accept `:test` and `:key`.
+`car`, `cdr`, `cons`, `list`, `list*`, `append`, `reverse`, `length`, `nth`, `nthcdr`, `first` … `tenth`, `last`, `butlast`, `member`, `assoc`, `rassoc`, `getf`, `acons`, `copy-list`, `push`, `pushnew`, `pop`, `mapcar`, `mapc`, `mapcan`, `maplist`, `map`, `reduce`, `remove`, `remove-if`, `remove-if-not`, `remove-duplicates`, `find`, `find-if`, `position`, `count`, `count-if`, `every`, `some`, `sort` (stable), `subseq`, `concatenate`, `coerce`, `search`, `elt`, `member-if`, `assoc-if`, `rassoc-if`, `copy-alist`, `mapl`, `mapcon`, `subst`, `subst-if`, `sublis`, `tree-equal`. Many accept `:test` and `:key`.
+
+Sets (lists used as sets): `union`, `intersection`, `set-difference`, `set-exclusive-or`, `subsetp`, `adjoin`, also with `:test` and `:key`.
 
 ```lisp
 (sort (list 3 1 2) #'<)                          ; → (1 2 3)
@@ -99,6 +106,23 @@ Extras (not Common Lisp, but handy): `(split-string "a b c")`, `(split-string "a
 (format nil "~a file~:p" 3)                     ; → "3 files"
 ```
 Directives: `~a ~s ~d ~b ~o ~x ~r ~f ~e ~$ ~c ~% ~& ~~ ~p ~* ~t ~{ ~} ~^ ~[ ~; ~] ~( ~)`, with width, padding character and the `:` and `@` modifiers.
+
+## Streams and files
+Besides the terminal you can write to a string or a file, and read from a string or a file. `print`, `princ`, `prin1`, `write-string`, `write-line`, `write-char`, `terpri`, `fresh-line` and `format` take the stream; `t` (or nothing) is `*standard-output*`, that is the terminal.
+```lisp
+(with-output-to-string (s)
+  (format s "~a lines" 3) (terpri s))          ; → "3 lines\n"
+
+(with-input-from-string (s "one\ntwo")
+  (list (read-line s) (read-line s)))          ; → ("one" "two")
+
+(with-open-file (f "notes.txt" :direction :output :if-exists :supersede)
+  (format f "Done on ~a~%" (now)))
+
+(with-open-file (f "notes.txt")
+  (loop for line = (read-line f nil) while line collect line))
+```
+`:if-exists` can be `:supersede` (rewrite), `:append` (add at the end), `:error` (the default, as in Common Lisp) or `nil`; `:if-does-not-exist nil` returns `nil` instead of an error. Files are UTF-8 and `with-open-file` closes them even after an error. There are also `open`, `close`, `read-char`, `peek-char`, `unread-char`, `read` (reads a form from the stream), `make-string-output-stream`, `get-output-stream-string`, `make-string-input-stream`, `streamp`, and `(let ((*standard-output* s)) …)` to send to `s` what would go to the terminal.
 
 ## Hash tables, vectors, structures
 ```lisp
@@ -166,6 +190,6 @@ Example: the 5 largest files in the folder, in KB:
 If you create `%APPDATA%\CorbolPrompt\init.lisp`, it is loaded when each Lisp tab opens: the place for your everyday functions and macros.
 
 ## Differences from Common Lisp
-Not available: CLOS (`defclass`, `defmethod`), packages, the condition system with restarts, multiple values (`values` returns the first one; `multiple-value-bind` binds only the first), ratios and complex numbers, streams other than the terminal, reader macros. The `never`, `always` and `thereis` clauses of `loop` are missing.
+Not available: CLOS (`defclass`, `defmethod`), packages, the condition system with restarts, multiple values (`values` returns the first one; `multiple-value-bind` binds only the first), ratios and complex numbers, reader macros, `tagbody`/`go`.
 
 The assistant knows exactly this dialect: ask it to write or explain Lisp code; the blocks it suggests run with a click in the Lisp tab.

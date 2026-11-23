@@ -59,7 +59,9 @@ Le variabili create con `defvar` e `defparameter` sono *speciali* (dinamiche), c
 Anche `(declaim (special x))` rende speciale una variabile e `(progv '(a b) '(1 2) ...)` lega simboli scelti mentre il programma gira.
 
 ## Controllo
-`if`, `when`, `unless`, `cond`, `case`/`ecase` (con `otherwise`), `and`, `or`, `not`, `progn`, `prog1`, `block`/`return-from`/`return`, `catch`/`throw`, `unwind-protect`.
+`if`, `when`, `unless`, `cond`, `case`/`ecase` (con `otherwise`), `and`, `or`, `not`, `progn`, `prog1`, `block`/`return-from`/`return`, `catch`/`throw`, `unwind-protect`, `typecase`/`etypecase` (i tipi: `integer`, `string`, `(or symbol character)`, `(integer 0 10)`, `(member a b)`, i nomi delle strutture…), `check-type`.
+
+Assegnamenti: `setq`/`setf` (su variabili, `car`, `cdr`, `cadr` e gli altri `c…r`, `nth`, `first` … `tenth`, `gethash`, `aref`, campi delle strutture), `psetq`/`psetf` (in parallelo: `(psetq a b b a)` scambia), `rotatef`, `shiftf`, `incf`, `decf`.
 
 Cicli: `dolist`, `dotimes`, `do`/`do*`, e `loop`:
 
@@ -71,11 +73,16 @@ Cicli: `dolist`, `dotimes`, `do`/`do*`, e `loop`:
 (loop for i from 10 downto 0 by 2 do (print i))
 (loop with s = 0 for i below 5 do (incf s i) finally (return s))
 (loop for x in lista when (evenp x) collect x into pari finally (return pari))
+(loop for x in '(2 4 6) always (evenp x))         ; → t  (anche never e thereis)
+(loop for k being the hash-keys of h using (hash-value v) collect (cons k v))
+(loop named fuori for i from 1 do (loop for j from 1 do (when (= (* i j) 6) (return-from fuori (list i j)))))
 ```
-Clausole di `loop`: `for … in / on / across / from / to / upto / below / downto / above / by / = … then`, `with`, `repeat`, `while`, `until`, `do`, `collect`, `append`, `sum`, `count`, `maximize`, `minimize`, `into`, `when` / `if` / `unless` (con `and` / `else` / `end`), `return`, `initially`, `finally`. Un `loop` senza parole chiave ripete il corpo finché non incontra `return`.
+Clausole di `loop`: `for … in / on / across / from / to / upto / below / downto / above / by / = … then`, `with`, `repeat`, `while`, `until`, `do`, `collect`, `append`, `sum`, `count`, `maximize`, `minimize`, `into`, `when` / `if` / `unless` (con `and` / `else` / `end`), `return`, `always`, `never`, `thereis`, `named`, `initially`, `finally`; `for … being the hash-keys / hash-values of … using (hash-value v)` per le tabelle hash; `(loop-finish)` chiude il ciclo passando da `finally`. Un `loop` senza parole chiave ripete il corpo finché non incontra `return`.
 
 ## Liste e sequenze
-`car`, `cdr`, `cons`, `list`, `list*`, `append`, `reverse`, `length`, `nth`, `nthcdr`, `first` … `tenth`, `last`, `butlast`, `member`, `assoc`, `rassoc`, `getf`, `acons`, `copy-list`, `push`, `pushnew`, `pop`, `mapcar`, `mapc`, `mapcan`, `maplist`, `map`, `reduce`, `remove`, `remove-if`, `remove-if-not`, `remove-duplicates`, `find`, `find-if`, `position`, `count`, `count-if`, `every`, `some`, `sort` (stabile), `subseq`, `concatenate`, `coerce`, `search`, `elt`. Molte accettano `:test` e `:key`.
+`car`, `cdr`, `cons`, `list`, `list*`, `append`, `reverse`, `length`, `nth`, `nthcdr`, `first` … `tenth`, `last`, `butlast`, `member`, `assoc`, `rassoc`, `getf`, `acons`, `copy-list`, `push`, `pushnew`, `pop`, `mapcar`, `mapc`, `mapcan`, `maplist`, `map`, `reduce`, `remove`, `remove-if`, `remove-if-not`, `remove-duplicates`, `find`, `find-if`, `position`, `count`, `count-if`, `every`, `some`, `sort` (stabile), `subseq`, `concatenate`, `coerce`, `search`, `elt`, `member-if`, `assoc-if`, `rassoc-if`, `copy-alist`, `mapl`, `mapcon`, `subst`, `subst-if`, `sublis`, `tree-equal`. Molte accettano `:test` e `:key`.
+
+Insiemi (liste usate come insiemi): `union`, `intersection`, `set-difference`, `set-exclusive-or`, `subsetp`, `adjoin`, anche loro con `:test` e `:key`.
 
 ```lisp
 (sort (list 3 1 2) #'<)                          ; → (1 2 3)
@@ -99,6 +106,23 @@ In più (non Common Lisp, ma comodi): `(split-string "a b c")`, `(split-string "
 (format nil "~a file~:p" 3)                     ; → "3 files"
 ```
 Direttive: `~a ~s ~d ~b ~o ~x ~r ~f ~e ~$ ~c ~% ~& ~~ ~p ~* ~t ~{ ~} ~^ ~[ ~; ~] ~( ~)`, con larghezza, carattere di riempimento e i modificatori `:` e `@`.
+
+## Stream e file
+Oltre al terminale si può scrivere su una stringa o su un file, e leggere da una stringa o da un file. `print`, `princ`, `prin1`, `write-string`, `write-line`, `write-char`, `terpri`, `fresh-line` e `format` accettano lo stream; `t` (o niente) è `*standard-output*`, cioè il terminale.
+```lisp
+(with-output-to-string (s)
+  (format s "~a righe" 3) (terpri s))          ; → "3 righe\n"
+
+(with-input-from-string (s "uno\ndue")
+  (list (read-line s) (read-line s)))          ; → ("uno" "due")
+
+(with-open-file (f "note.txt" :direction :output :if-exists :supersede)
+  (format f "Fatto il ~a~%" (now)))
+
+(with-open-file (f "note.txt")
+  (loop for riga = (read-line f nil) while riga collect riga))
+```
+`:if-exists` può essere `:supersede` (riscrive), `:append` (aggiunge in fondo), `:error` (il predefinito, come in Common Lisp) o `nil`; `:if-does-not-exist nil` restituisce `nil` invece di dare errore. I file sono in UTF-8 e `with-open-file` li chiude anche se c'è un errore. Ci sono anche `open`, `close`, `read-char`, `peek-char`, `unread-char`, `read` (legge una forma dallo stream), `make-string-output-stream`, `get-output-stream-string`, `make-string-input-stream`, `streamp`, e `(let ((*standard-output* s)) …)` per mandare su `s` anche quello che si scriverebbe sul terminale.
 
 ## Tabelle hash, vettori, strutture
 ```lisp
@@ -166,6 +190,6 @@ Esempio: i 5 file più grandi della cartella, in KB:
 Se crei `%APPDATA%\CorbolPrompt\init.lisp`, viene caricato all'apertura di ogni scheda Lisp: è il posto per le tue funzioni e macro di tutti i giorni.
 
 ## Differenze da Common Lisp
-Non ci sono: CLOS (`defclass`, `defmethod`), package, il sistema di condizioni con i restart, valori multipli (`values` restituisce il primo; `multiple-value-bind` lega solo il primo), frazioni e numeri complessi, stream diversi dal terminale, reader macro. Le clausole `never`, `always` e `thereis` di `loop` non ci sono.
+Non ci sono: CLOS (`defclass`, `defmethod`), package, il sistema di condizioni con i restart, valori multipli (`values` restituisce il primo; `multiple-value-bind` lega solo il primo), frazioni e numeri complessi, reader macro, `tagbody`/`go`.
 
 L'assistente conosce esattamente questo dialetto: chiedigli pure di scrivere o spiegare codice Lisp, i blocchi che propone si eseguono con un clic nella scheda Lisp.

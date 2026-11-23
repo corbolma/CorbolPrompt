@@ -174,6 +174,7 @@ namespace CorbolPrompt
         int pos;
 
         public Reader(Interp it, string text) { this.it = it; s = text; }
+        public int Pos { get { return pos; } }   // quanto testo è già stato letto (read da uno stream)
 
         void SkipSpace()
         {
@@ -679,6 +680,7 @@ namespace CorbolPrompt
             T.Value = T; T.Constant = true;
             Cwd = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             Builtins();
+            MoreBuiltins();
             Shell();
             Prelude();
         }
@@ -1018,7 +1020,20 @@ namespace CorbolPrompt
                                 }
                                 return Eval(a, env);
                             }
-                        case "setq": case "setf": case "psetq":
+                        case "psetq": case "psetf":
+                            {
+                                // prima tutti i valori, poi gli assegnamenti: (psetq a b b a) scambia
+                                var places = new List<object>(); var newVals = new List<object>();
+                                for (var b = c.Cdr as Cons; b != null; b = ((Cons)b.Cdr).Cdr as Cons)
+                                {
+                                    if (!(b.Cdr is Cons)) throw new LispError(head.Name + ": manca il valore");
+                                    places.Add(b.Car);
+                                    newVals.Add(Eval(((Cons)b.Cdr).Car, env));
+                                }
+                                for (int i = 0; i < places.Count; i++) SetPlace(places[i], newVals[i], env);
+                                return null;
+                            }
+                        case "setq": case "setf":
                             {
                                 object v = null;
                                 var b = c.Cdr as Cons;
@@ -1215,7 +1230,7 @@ namespace CorbolPrompt
 
         public static bool IsControl(Exception ex)
         {
-            return ex is ReturnFrom || ex is ThrowTag || ex is LispInterrupted || ex is LispExit;
+            return ex is ReturnFrom || ex is ThrowTag || ex is LispInterrupted || ex is LispExit || ex is LoopEnd;
         }
 
         public object Apply(LispFn fn, object[] args)
@@ -1381,9 +1396,25 @@ namespace CorbolPrompt
                         if (seq is Cons) { AsCons(NthCdr(seq, i)).Car = v; return; }
                         throw new LispError("setf aref: le stringhe non si modificano, usa un vettore");
                     }
+                case "fourth": case "fifth": case "sixth": case "seventh": case "eighth": case "ninth": case "tenth":
+                    {
+                        int n = Array.IndexOf(new[] { "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth" }, h.Name) + 3;
+                        AsCons(NthCdr(Eval(Nth(c, 1), env), n)).Car = v;
+                        return;
+                    }
                 case "symbol-value": SetVar((Sym)Eval(Nth(c, 1), env), v, env); return;
                 case "getf":
                     throw new LispError("setf getf non è supportato");
+            }
+            // cadr, cddr, caddr...: le lettere interne portano al cons, la prima dice se cambiare car o cdr
+            if (h.Name.Length >= 4 && h.Name.Length <= 6 && h.Name[0] == 'c' && h.Name[h.Name.Length - 1] == 'r' &&
+                h.Name.Substring(1, h.Name.Length - 2).All(ch => ch == 'a' || ch == 'd'))
+            {
+                string ops = h.Name.Substring(1, h.Name.Length - 2);
+                object x = Eval(Nth(c, 1), env);
+                for (int i = ops.Length - 1; i >= 1; i--) x = ops[i] == 'a' ? AsCons(x).Car : AsCons(x).Cdr;
+                if (ops[0] == 'a') AsCons(x).Car = v; else AsCons(x).Cdr = v;
+                return;
             }
             KeyValuePair<StructType, int> acc;
             if (accessors.TryGetValue(h, out acc))
@@ -1583,8 +1614,11 @@ namespace CorbolPrompt
             {
                 try { while (true) Progn(c.Cdr, env); }
                 catch (ReturnFrom rf) { if (rf.Name == null) return rf.Value; throw; }
+                catch (LoopEnd) { return null; }
             }
             var ne = new Env(env);
+            Sym loopName = null;              // loop named x: (return-from x ...)
+            string boolKind = null;           // always / never / thereis
             var vars = new List<LoopVar>();
             var steps = new List<Func<bool>>();     // false = il ciclo finisce
             var finallyForms = new List<object>();
@@ -1660,6 +1694,17 @@ namespace CorbolPrompt
                             var form = next();
                             return () => { result = ev(form); done = true; throw new ReturnFrom(null, result); };
                         }
+                    case "always": case "never": case "thereis":
+                        {
+                            var form = next();
+                            if (boolKind == null) boolKind = k;
+                            return () =>
+                            {
+                                var v = ev(form);
+                                if (k == "thereis") { if (Truthy(v)) throw new ReturnFrom(null, v); }
+                                else if (Truthy(v) == (k == "never")) throw new ReturnFrom(null, null);
+                            };
+                        }
                     case "while":
                         {
                             var form = next();
@@ -1709,6 +1754,26 @@ namespace CorbolPrompt
                             lv.Kind = "num"; lv.From = 0L; lv.To = next(); lv.Below = how == "below";
                             if (peek() == "by") { pos++; lv.By = next(); }
                             break;
+                        case "being":
+                            {
+                                // for k being the hash-keys of h [using (hash-value v)], for v being each hash-value in h
+                                if (peek() == "the" || peek() == "each") pos++;
+                                string what = peek(); pos++;
+                                if (what == "hash-key" || what == "hash-keys") lv.Kind = "hash-keys";
+                                else if (what == "hash-value" || what == "hash-values") lv.Kind = "hash-values";
+                                else throw new LispError("loop for ... being: si possono scorrere hash-keys e hash-values, non " + (what ?? "questo"));
+                                if (peek() != "of" && peek() != "in") throw new LispError("loop for ... being the " + what + ": manca of");
+                                pos++;
+                                lv.Init = next();
+                                if (peek() == "using")
+                                {
+                                    pos++;
+                                    var u = ListItems(next());
+                                    if (u.Count != 2 || !(u[1] is Sym)) throw new LispError("loop: using vuole (hash-value v) o (hash-key k)");
+                                    lv.Then = u[1];   // la variabile per l'altra metà della coppia
+                                }
+                                break;
+                            }
                         default: throw new LispError("loop for: forma non supportata: " + how);
                     }
                     vars.Add(lv);
@@ -1722,6 +1787,12 @@ namespace CorbolPrompt
                     if (peek() == "=") { pos++; init = next(); }
                     ne.Define(v, Eval(init, ne));
                     while (peek() == "and") { pos++; var v2 = (Sym)next(); object i2 = null; if (peek() == "=") { pos++; i2 = next(); } ne.Define(v2, Eval(i2, ne)); }
+                    continue;
+                }
+                if (k == "named")
+                {
+                    pos++;
+                    loopName = next() as Sym;
                     continue;
                 }
                 if (k == "repeat")
@@ -1761,6 +1832,15 @@ namespace CorbolPrompt
                             LoopBind(ne, lv.Var, lv.Init, true);
                             break;
                         case "repeat": lv.Seq = ev(lv.Init); lv.Index = 0; break;
+                        case "hash-keys": case "hash-values":
+                            {
+                                var h = ev(lv.Init) as Dictionary<object, object>;
+                                if (h == null) throw new LispError("loop for ... being the " + lv.Kind + ": non è una tabella hash");
+                                lv.Seq = h.Select(kv => (object)new Cons(kv.Key == NilKey ? null : kv.Key, kv.Value)).ToList();
+                                LoopBind(ne, lv.Var, null, true);
+                                if (lv.Then != null) LoopBind(ne, lv.Then, null, true);
+                                break;
+                            }
                     }
                 }
                 while (true)
@@ -1816,6 +1896,16 @@ namespace CorbolPrompt
                                 if (Num.Compare((long)lv.Index, lv.Seq) >= 0) { stop = true; break; }
                                 lv.Index++;
                                 break;
+                            case "hash-keys": case "hash-values":
+                                {
+                                    var l = (List<object>)lv.Seq;
+                                    if (lv.Index >= l.Count) { stop = true; break; }
+                                    var kv = (Cons)l[lv.Index++];
+                                    bool keys = lv.Kind == "hash-keys";
+                                    LoopBind(ne, lv.Var, keys ? kv.Car : kv.Cdr, false);
+                                    if (lv.Then != null) LoopBind(ne, lv.Then, keys ? kv.Cdr : kv.Car, false);
+                                    break;
+                                }
                         }
                         if (stop) break;
                     }
@@ -1826,17 +1916,19 @@ namespace CorbolPrompt
                 }
                 object accResult = accKind == "collect" || accKind == "append" ? ToList(accList, null) : acc;
                 if (accInto != null) { object iv; ne.TryGet(accInto, out iv); accResult = null; }
-                if (finallyForms.Count > 0) { var fr = Progn(ToList(finallyForms, null), ne); if (accKind == null) return fr; }
+                if (boolKind != null && accKind == null) accResult = boolKind == "thereis" ? null : T;   // always/never arrivati in fondo
+                if (finallyForms.Count > 0) { var fr = Progn(ToList(finallyForms, null), ne); if (accKind == null && boolKind == null) return fr; }
                 return accResult;
             }
             catch (ReturnFrom rf)
             {
-                if (rf.Name == null) return rf.Value;
+                if (rf.Name == null || (loopName != null && rf.Name == loopName)) return rf.Value;
                 throw;
             }
         }
 
-        sealed class LoopEnd : Exception { }
+        // while/until e (loop-finish): il ciclo finisce passando da finally
+        sealed class LoopEnd : Exception { public LoopEnd() : base("loop-finish fuori da un loop") { } }
 
         // for x / for (a b) / for (a . b): variabili semplici o destrutturate
         static void LoopBind(Env env, object pattern, object value, bool define)
@@ -1857,7 +1949,7 @@ namespace CorbolPrompt
         {
             "for", "as", "with", "repeat", "do", "doing", "collect", "collecting", "append", "appending", "nconc", "sum", "summing",
             "count", "counting", "maximize", "maximizing", "minimize", "minimizing", "when", "if", "unless", "return", "while", "until",
-            "finally", "initially", "and", "else", "end", "into"
+            "finally", "initially", "and", "else", "end", "into", "named", "always", "never", "thereis"
         };
 
         static bool LoopKeyword(Sym s) { return loopWords.Contains(s.Name); }
