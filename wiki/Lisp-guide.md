@@ -49,6 +49,15 @@ You can paste several forms at once: they are evaluated one after the other. The
 ```
 Parameters: `&optional`, `&rest`/`&body`, `&key`, `&aux`, with default values. Tail recursion uses no memory: a loop written as a recursive function can run millions of times. Non-tail recursion goes up to 20,000 nested calls.
 
+Variables made with `defvar` and `defparameter` are *special* (dynamic), as in Common Lisp: a `let` that binds one changes its value for the functions called inside too, and when the `let` ends the old value comes back (even after an error).
+```lisp
+(defvar *indent* 0)
+(defun show (s) (format t "~a~a~%" (make-string *indent* :initial-element #\space) s))
+(let ((*indent* 4)) (show "indented"))   ; 4 spaces
+(show "normal")                          ; none
+```
+`(declaim (special x))` also makes a variable special, and `(progv '(a b) '(1 2) ...)` binds symbols chosen while the program runs.
+
 ## Control
 `if`, `when`, `unless`, `cond`, `case`/`ecase` (with `otherwise`), `and`, `or`, `not`, `progn`, `prog1`, `block`/`return-from`/`return`, `catch`/`throw`, `unwind-protect`.
 
@@ -157,6 +166,6 @@ Example: the 5 largest files in the folder, in KB:
 If you create `%APPDATA%\CorbolPrompt\init.lisp`, it is loaded when each Lisp tab opens: the place for your everyday functions and macros.
 
 ## Differences from Common Lisp
-Not available: CLOS (`defclass`, `defmethod`), packages, the condition system with restarts, multiple values (`values` returns the first one; `multiple-value-bind` binds only the first), special (dynamic) variables (`defvar` makes an ordinary global variable), ratios and complex numbers, streams other than the terminal, reader macros. The `never`, `always` and `thereis` clauses of `loop` are missing.
+Not available: CLOS (`defclass`, `defmethod`), packages, the condition system with restarts, multiple values (`values` returns the first one; `multiple-value-bind` binds only the first), ratios and complex numbers, streams other than the terminal, reader macros. The `never`, `always` and `thereis` clauses of `loop` are missing.
 
 The assistant knows exactly this dialect: ask it to write or explain Lisp code; the blocks it suggests run with a click in the Lisp tab.

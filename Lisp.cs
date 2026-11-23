@@ -27,6 +27,7 @@ namespace CorbolPrompt
         public object Value = Unbound;
         public object Function;    // LispFn o Macro
         public bool Constant;
+        public bool Special;       // defvar/defparameter/(declaim (special ...)): legata dinamicamente
         public Sym(string name) { Name = name; }
         public bool IsKeyword { get { return Name.Length > 1 && Name[0] == ':'; } }
         public override string ToString() { return Name; }
@@ -85,18 +86,47 @@ namespace CorbolPrompt
     sealed class ThrowTag : Exception { public object Tag, Value; public ThrowTag(object t, object v) { Tag = t; Value = v; } }
     sealed class LispExit : Exception { }
 
+    // Legami delle variabili speciali: il valore vive nel simbolo, qui si tiene quello di prima,
+    // che Eval e Apply rimettono a posto quando escono (anche per errori e throw).
+    sealed class DynStack
+    {
+        Sym[] syms = new Sym[16];
+        object[] olds = new object[16];
+        public int Count;
+
+        public void Push(Sym s, object v)
+        {
+            if (Count == syms.Length) { Array.Resize(ref syms, Count * 2); Array.Resize(ref olds, Count * 2); }
+            syms[Count] = s; olds[Count] = s.Value; Count++;
+            s.Value = v;
+        }
+
+        public void Unwind(int mark)
+        {
+            while (Count > mark)
+            {
+                Count--;
+                syms[Count].Value = olds[Count];
+                syms[Count] = null; olds[Count] = null;
+            }
+        }
+    }
+
     sealed class Env
     {
         public readonly Env Parent;
+        public readonly DynStack Dyn;
         Sym[] keys = new Sym[4];
         object[] vals = new object[4];
         int n;
         public Dictionary<Sym, LispFn> Funs;   // flet / labels
 
-        public Env(Env parent) { Parent = parent; }
+        public Env(Env parent) { Parent = parent; Dyn = parent != null ? parent.Dyn : null; }
+        public Env(DynStack dyn) { Dyn = dyn; }
 
         public void Define(Sym s, object v)
         {
+            if (s.Special && Dyn != null) { Dyn.Push(s, v); return; }
             for (int i = 0; i < n; i++) if (keys[i] == s) { vals[i] = v; return; }
             if (n == keys.Length) { Array.Resize(ref keys, n * 2); Array.Resize(ref vals, n * 2); }
             keys[n] = s; vals[n] = v; n++;
@@ -104,6 +134,7 @@ namespace CorbolPrompt
 
         public bool TryGet(Sym s, out object v)
         {
+            if (s.Special) { v = s.Value == Sym.Unbound ? null : s.Value; return s.Value != Sym.Unbound; }
             for (var e = this; e != null; e = e.Parent)
                 for (int i = 0; i < e.n; i++) if (e.keys[i] == s) { v = e.vals[i]; return true; }
             v = null;
@@ -112,6 +143,7 @@ namespace CorbolPrompt
 
         public bool TrySet(Sym s, object v)
         {
+            if (s.Special) { s.Value = v; return true; }
             for (var e = this; e != null; e = e.Parent)
                 for (int i = 0; i < e.n; i++) if (e.keys[i] == s) { e.vals[i] = v; return true; }
             return false;
@@ -626,7 +658,8 @@ namespace CorbolPrompt
         const int MaxDepth = 20000;
         readonly Dictionary<string, Sym> symbols = new Dictionary<string, Sym>();
         public readonly Sym T;
-        public readonly Env Global = new Env(null);
+        readonly DynStack dyn = new DynStack();
+        public readonly Env Global;
         public Action<string> Out = delegate { };
         public Func<string> ReadLineHook;      // (read-line) dalla tastiera
         public volatile bool Interrupt;
@@ -641,6 +674,7 @@ namespace CorbolPrompt
 
         public Interp()
         {
+            Global = new Env(dyn);
             T = Intern("t");
             T.Value = T; T.Constant = true;
             Cwd = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
@@ -784,8 +818,9 @@ namespace CorbolPrompt
         public object Eval(object x, Env env)
         {
             if (++depth > MaxDepth) { depth = 0; throw new LispError("troppa ricorsione (più di " + MaxDepth + " chiamate annidate)"); }
+            int mark = dyn.Count;
             try { return EvalLoop(x, env); }
-            finally { if (depth > 0) depth--; }
+            finally { if (depth > 0) depth--; if (dyn.Count > mark) dyn.Unwind(mark); }
         }
 
         public void ResetDepth() { depth = 0; }
@@ -863,13 +898,18 @@ namespace CorbolPrompt
                         case "let": case "let*":
                             {
                                 var ne = new Env(env);
-                                foreach (var b in ListItems(Nth(c, 1)))
-                                {
-                                    var bc = b as Cons;
-                                    Sym name = bc != null ? (Sym)bc.Car : (Sym)b;
-                                    object v = bc != null ? Eval(Nth(bc, 1), head.Name == "let" ? env : ne) : null;
-                                    ne.Define(name, v);
-                                }
+                                bool parallel = head.Name == "let";
+                                var bindings = ListItems(Nth(c, 1));
+                                // let: prima tutti i valori, poi i legami (una variabile speciale cambia subito il simbolo)
+                                var vals = parallel ? new object[bindings.Count] : null;
+                                for (int pass = parallel ? 0 : 1; pass < 2; pass++)
+                                    for (int i = 0; i < bindings.Count; i++)
+                                    {
+                                        var bc = bindings[i] as Cons;
+                                        Sym name = bc != null ? (Sym)bc.Car : (Sym)bindings[i];
+                                        if (pass == 0) { vals[i] = bc != null ? Eval(Nth(bc, 1), env) : null; continue; }
+                                        ne.Define(name, parallel ? vals[i] : bc != null ? Eval(Nth(bc, 1), ne) : null);
+                                    }
                                 env = ne;
                                 x = BodyTail(NthCdr(c, 2), env);
                                 continue;
@@ -1045,6 +1085,7 @@ namespace CorbolPrompt
                         case "defvar": case "defparameter": case "defconstant":
                             {
                                 var name = (Sym)Nth(c, 1);
+                                if (head.Name != "defconstant") name.Special = true;
                                 if (head.Name != "defvar" || name.Value == Sym.Unbound)
                                     if (c.Cdr is Cons && ((Cons)c.Cdr).Cdr != null) { name.Constant = false; name.Value = Eval(Nth(c, 2), env); }
                                     else if (name.Value == Sym.Unbound) name.Value = null;
@@ -1112,7 +1153,31 @@ namespace CorbolPrompt
                                 continue;
                             }
                         case "the": x = Nth(c, 2); continue;
-                        case "declare": case "declaim": case "in-package": case "defpackage": case "proclaim": return null;
+                        case "declaim": case "proclaim":
+                            // (declaim (special a b)) / (proclaim '(special a b)): le altre dichiarazioni si ignorano
+                            foreach (var d in ListItems(c.Cdr))
+                            {
+                                var dc = d as Cons;
+                                if (dc != null && dc.Car is Sym && ((Sym)dc.Car).Name == "quote") dc = Nth(dc, 1) as Cons;
+                                if (dc != null && dc.Car is Sym && ((Sym)dc.Car).Name == "special")
+                                    foreach (var s in ListItems(dc.Cdr)) if (s is Sym) ((Sym)s).Special = true;
+                            }
+                            return null;
+                        case "progv":
+                            {
+                                // (progv simboli valori corpo...): legami dinamici scelti a tempo di esecuzione
+                                var syms = ListItems(Eval(Nth(c, 1), env));
+                                var vals = ListItems(Eval(Nth(c, 2), env));
+                                for (int i = 0; i < syms.Count; i++)
+                                {
+                                    var s = syms[i] as Sym;
+                                    if (s == null) throw new LispError("progv: " + Printer.Print(syms[i], true) + " non è un simbolo");
+                                    dyn.Push(s, i < vals.Count ? vals[i] : Sym.Unbound);
+                                }
+                                x = BodyTail(NthCdr(c, 3), env);
+                                continue;
+                            }
+                        case "declare": case "in-package": case "defpackage": return null;
                         case "eval-when": x = BodyTail(NthCdr(c, 2), env); continue;
                     }
                 }
@@ -1164,6 +1229,7 @@ namespace CorbolPrompt
             }
             var cl = (Closure)fn;
             if (++depth > MaxDepth) { depth = 0; throw new LispError("troppa ricorsione (più di " + MaxDepth + " chiamate annidate)"); }
+            int mark = dyn.Count;
             try
             {
                 var env = Bind(cl, args);
@@ -1171,7 +1237,7 @@ namespace CorbolPrompt
                 try { return Progn(cl.Body, env); }
                 catch (ReturnFrom rf) { if (rf.Name == cl.Block) return rf.Value; throw; }
             }
-            finally { if (depth > 0) depth--; }
+            finally { if (depth > 0) depth--; if (dyn.Count > mark) dyn.Unwind(mark); }
         }
 
         public object Call(object f, params object[] args)

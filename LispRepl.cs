@@ -389,7 +389,7 @@ namespace CorbolPrompt
             "quote", "if", "progn", "let", "let*", "flet", "labels", "cond", "case", "ecase", "and", "or", "when", "unless", "lambda", "function",
             "setq", "setf", "incf", "decf", "push", "pushnew", "pop", "defun", "defmacro", "defvar", "defparameter", "defconstant", "defstruct",
             "block", "return-from", "return", "catch", "throw", "unwind-protect", "ignore-errors", "handler-case", "dolist", "dotimes", "do",
-            "loop", "prog1", "time", "multiple-value-bind", "destructuring-bind"
+            "loop", "prog1", "time", "multiple-value-bind", "destructuring-bind", "progv", "declaim"
         };
 
         // ---------- disegno della riga ----------

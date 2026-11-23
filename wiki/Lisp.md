@@ -49,6 +49,15 @@ Si può incollare più di una forma insieme: vengono valutate una dopo l'altra. 
 ```
 Parametri: `&optional`, `&rest`/`&body`, `&key`, `&aux`, con valori predefiniti. La ricorsione in coda non consuma memoria: un ciclo scritto come funzione ricorsiva può girare milioni di volte. La ricorsione non in coda arriva a 20.000 chiamate annidate.
 
+Le variabili create con `defvar` e `defparameter` sono *speciali* (dinamiche), come in Common Lisp: un `let` che le lega cambia il valore anche per le funzioni chiamate dentro, e alla fine del `let` torna quello di prima (anche se c'è un errore).
+```lisp
+(defvar *rientro* 0)
+(defun stampa (s) (format t "~a~a~%" (make-string *rientro* :initial-element #\space) s))
+(let ((*rientro* 4)) (stampa "rientrato"))   ; 4 spazi
+(stampa "normale")                            ; nessuno
+```
+Anche `(declaim (special x))` rende speciale una variabile e `(progv '(a b) '(1 2) ...)` lega simboli scelti mentre il programma gira.
+
 ## Controllo
 `if`, `when`, `unless`, `cond`, `case`/`ecase` (con `otherwise`), `and`, `or`, `not`, `progn`, `prog1`, `block`/`return-from`/`return`, `catch`/`throw`, `unwind-protect`.
 
@@ -157,6 +166,6 @@ Esempio: i 5 file più grandi della cartella, in KB:
 Se crei `%APPDATA%\CorbolPrompt\init.lisp`, viene caricato all'apertura di ogni scheda Lisp: è il posto per le tue funzioni e macro di tutti i giorni.
 
 ## Differenze da Common Lisp
-Non ci sono: CLOS (`defclass`, `defmethod`), package, il sistema di condizioni con i restart, valori multipli (`values` restituisce il primo; `multiple-value-bind` lega solo il primo), variabili speciali (dinamiche: `defvar` crea una variabile globale normale), frazioni e numeri complessi, stream diversi dal terminale, reader macro. Le clausole `never`, `always` e `thereis` di `loop` non ci sono.
+Non ci sono: CLOS (`defclass`, `defmethod`), package, il sistema di condizioni con i restart, valori multipli (`values` restituisce il primo; `multiple-value-bind` lega solo il primo), frazioni e numeri complessi, stream diversi dal terminale, reader macro. Le clausole `never`, `always` e `thereis` di `loop` non ci sono.
 
 L'assistente conosce esattamente questo dialetto: chiedigli pure di scrivere o spiegare codice Lisp, i blocchi che propone si eseguono con un clic nella scheda Lisp.
