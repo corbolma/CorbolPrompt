@@ -38,6 +38,13 @@ Per le prove: la variabile d'ambiente `CORBOLPROMPT_PTYLOG=<file>` scrive in que
    gh release create vX.Y.Z dist\CorbolPrompt-Setup-X.Y.Z.exe --title "CorbolPrompt X.Y.Z" --notes-file dist\notes-X.Y.Z.md
    ```
 
+## Pubblicare la wiki
+Le pagine della wiki sono in `wiki\`. Dopo averle modificate:
+```
+powershell -ExecutionPolicy Bypass -File publish-wiki.ps1
+```
+copia nella [wiki di GitHub](https://github.com/corbolma/CorbolPrompt/wiki) le pagine nuove o cambiate e toglie quelle eliminate (se è già tutto uguale non fa nulla).
+
 ## Traduzioni
 I testi sono scritti nel codice in italiano e inglese (`L.T("italiano", "English")`). Per un'altra lingua:
 1. `powershell -ExecutionPolicy Bypass -File lang-check.ps1` aggiorna `lang\_template.txt` con tutti i testi;

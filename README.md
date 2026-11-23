@@ -10,7 +10,7 @@ Terminale a schede per Windows con un assistente IA e un interprete Lisp integra
 
 ## Guida
 
-La guida completa è la wiki del progetto (sorgenti in `wiki\`, da pubblicare su GitHub): installazione, guida utente, guida al Lisp, domande frequenti, come compilare. Dall'app: menu ⋯ → Guida (Ctrl+F1) e Guida al Lisp. Al primo avvio una presentazione di 4 pagine mostra le funzioni principali; si riapre da ⋯ → Benvenuto.
+La guida completa è la [wiki del progetto](https://github.com/corbolma/CorbolPrompt/wiki) (sorgenti in `wiki\`, si pubblica con `publish-wiki.ps1`): installazione, guida utente, guida al Lisp, domande frequenti, come compilare. Dall'app: menu ⋯ → Guida (Ctrl+F1) e Guida al Lisp. Al primo avvio una presentazione di 4 pagine mostra le funzioni principali; si riapre da ⋯ → Benvenuto.
 
 ## Tasti
 

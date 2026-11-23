@@ -38,6 +38,13 @@ For testing: the environment variable `CORBOLPROMPT_PTYLOG=<file>` writes the ra
    gh release create vX.Y.Z dist\CorbolPrompt-Setup-X.Y.Z.exe --title "CorbolPrompt X.Y.Z" --notes-file dist\notes-X.Y.Z.md
    ```
 
+## Publishing the wiki
+The wiki pages are in `wiki\`. After editing them:
+```
+powershell -ExecutionPolicy Bypass -File publish-wiki.ps1
+```
+copies new or changed pages to the [GitHub wiki](https://github.com/corbolma/CorbolPrompt/wiki) and removes deleted ones (if everything is already the same it does nothing).
+
 ## Translations
 The texts are written in the code in Italian and English (`L.T("italiano", "English")`). For another language:
 1. `powershell -ExecutionPolicy Bypass -File lang-check.ps1` updates `lang\_template.txt` with all the texts;
