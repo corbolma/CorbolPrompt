@@ -327,6 +327,15 @@ namespace CorbolPrompt
             foreach (ToolStripDropDown dd in new ToolStripDropDown[] { newMenu, tabMenu, listMenu }) KeepOnScreen(dd);
             KeepOnScreen(tbFav);
             KeepOnScreen(more);
+            // Con un menu della barra aperto, passare col mouse su un altro pulsante (es. Assistente) lo chiudeva:
+            // WinForms lo chiude come se l'app avesse perso il focus. Se l'app è ancora attiva e non si è cliccato,
+            // resta aperto; si chiude cliccando di nuovo il pulsante, cliccando altrove, con Esc o cambiando finestra.
+            foreach (var dd in new[] { more.DropDown, tbFav.DropDown })
+                dd.Closing += (s, e) =>
+                {
+                    if (e.CloseReason == ToolStripDropDownCloseReason.AppFocusChange && MouseButtons == MouseButtons.None && ActiveForm == this)
+                        e.Cancel = true;
+                };
             topBar.Height = tabStrip.Height;
             topBar.Controls.Add(tabStrip);
             topBar.Controls.Add(tools);

@@ -59,8 +59,8 @@ namespace CorbolPrompt
         float scale = 1f;
 
         // La rotellina di Windows va al controllo col focus, non a quello sotto il mouse: con le schede affiancate
-        // (e dopo che i SplitContainer della griglia si sono presi il focus) non scorreva più niente.
-        // Questo filtro la manda al terminale che sta sotto il puntatore.
+        // scorreva solo il terminale attivo, e con il focus nel terminale la conversazione dell'assistente non scorreva
+        // (e viceversa). Questo filtro la manda sempre a quello che sta sotto il puntatore, in tutta la finestra.
         sealed class WheelFilter : IMessageFilter
         {
             [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
@@ -68,14 +68,18 @@ namespace CorbolPrompt
 
             public bool PreFilterMessage(ref Message m)
             {
-                if (m.Msg != 0x020A) return false;   // WM_MOUSEWHEEL
+                if (m.Msg != 0x020A && m.Msg != 0x020E) return false;   // WM_MOUSEWHEEL, WM_MOUSEHWHEEL
                 long lp = (long)m.LParam;
                 var pt = new Point((short)(lp & 0xFFFF), (short)((lp >> 16) & 0xFFFF));
-                var v = Control.FromHandle(WindowFromPoint(pt)) as TermView;
-                if (v == null || v.Handle == m.HWnd || !v.Visible) return false;
-                var f = v.FindForm();
-                if (f == null || Form.ActiveForm != f) return false;   // non sotto una finestra di dialogo aperta sopra
-                SendMessage(v.Handle, m.Msg, m.WParam, m.LParam);
+                IntPtr target = WindowFromPoint(pt);
+                if (target == IntPtr.Zero || target == m.HWnd) return false;
+                // solo finestre di questa app (la finestra sotto il mouse può essere un controllo interno senza Control:
+                // FromChildHandle risale al primo che c'è), e non sotto una finestra di dialogo aperta sopra
+                var c = Control.FromChildHandle(target);
+                if (c == null || !c.Visible) return false;
+                var f = c.FindForm();
+                if (f == null || Form.ActiveForm != f) return false;
+                SendMessage(target, m.Msg, m.WParam, m.LParam);   // i controlli che non scorrono la passano al contenitore
                 return true;
             }
         }
