@@ -83,7 +83,9 @@ Il pannello a destra. In cima c'è sempre scritto il **servizio** in uso e, per 
 - Scrivi una domanda e premi **Invio** (Maiusc+Invio va a capo, Esc torna al terminale). Esempi: *"come trovo i file più grandi di 1 GB?"*, *"cosa vuol dire questo errore?"*, *"crea un repository git qui"*.
 - L'assistente riceve la tua domanda, la shell e la cartella della scheda, i nomi delle altre schede e, se lo permetti, le **ultime righe dello schermo** e il testo selezionato. Se nella domanda nomini un'altra scheda (o parli delle "schede"), riceve anche le sue ultime righe.
 - Ogni comando che propone diventa un pulsante **▶** sotto la conversazione: **clic** lo esegue nella scheda attiva, **tasto destro** lo incolla senza eseguirlo, lo copia o lo aggiunge ai preferiti. Il codice Lisp va in una scheda Lisp (la apre se non c'è). Niente viene eseguito senza il tuo clic.
-- Ogni scheda ha la sua conversazione; **Nuova** la ricomincia.
+- I pulsanti sotto la domanda: **🎤 Detta** (dettatura vocale di Windows, Win+H: parli e il testo compare nella domanda), **🕘 Recenti**, **Nuova chat**, **Chiedi** (diventa **Ferma** mentre l'assistente lavora).
+- **Domande già fatte:** **↑ / ↓** nel campo della domanda le ripropongono, come nel terminale; **🕘 Recenti** mostra le ultime in un menu. Sono comuni a tutte le schede e restano tra un avvio e l'altro (le ultime 200); il menu ha anche *Cancella la cronologia delle domande*.
+- Ogni scheda ha la sua conversazione; **Nuova chat** la ricomincia.
 - **Spiega lo schermo con l'assistente** (tasto destro sul terminale) chiede la spiegazione delle ultime righe, o del testo selezionato.
 
 ### Impostazioni dell'assistente

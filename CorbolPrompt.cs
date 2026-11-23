@@ -81,6 +81,66 @@ namespace CorbolPrompt
         public static void Set(string key, bool v) { values[key] = v ? "1" : "0"; }
     }
 
+    // Domande fatte all'assistente, comuni a tutte le schede e ricordate tra un avvio e l'altro:
+    // %APPDATA%\CorbolPrompt\questions.txt, una per riga (a capo scritto \n, barra rovesciata \\)
+    static class QuestionHistory
+    {
+        const int Max = 200;
+        static readonly string Path_ = Path.Combine(Settings.Dir, "questions.txt");
+        static List<string> items;
+
+        public static List<string> Items
+        {
+            get
+            {
+                if (items != null) return items;
+                items = new List<string>();
+                try
+                {
+                    if (File.Exists(Path_))
+                        foreach (var ln in File.ReadAllLines(Path_, Encoding.UTF8))
+                            if (ln.Length > 0) items.Add(Unescape(ln));
+                }
+                catch { }
+                return items;
+            }
+        }
+
+        public static void Add(string q)
+        {
+            var l = Items;
+            l.Remove(q);   // la stessa domanda rifatta torna in fondo, senza doppioni
+            l.Add(q);
+            if (l.Count > Max) l.RemoveRange(0, l.Count - Max);
+            Save();
+        }
+
+        public static void Clear() { Items.Clear(); Save(); }
+
+        static void Save()
+        {
+            try
+            {
+                Directory.CreateDirectory(Settings.Dir);
+                File.WriteAllLines(Path_, Items.Select(Escape), new UTF8Encoding(false));
+            }
+            catch { }
+        }
+
+        static string Escape(string s) { return s.Replace("\\", "\\\\").Replace("\r", "").Replace("\n", "\\n"); }
+
+        static string Unescape(string s)
+        {
+            var sb = new StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (s[i] == '\\' && i + 1 < s.Length) { i++; sb.Append(s[i] == 'n' ? "\r\n" : s[i].ToString()); }
+                else sb.Append(s[i]);
+            }
+            return sb.ToString();
+        }
+    }
+
     // Una scheda: la shell, il suo schermo e la conversazione con l'assistente
     class TermTab
     {
@@ -218,7 +278,9 @@ namespace CorbolPrompt
         readonly FlowLayoutPanel cmdPanel = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true, BackColor = Color.White, Padding = new Padding(0, 4, 0, 0) };
         readonly Label lbBusy = new Label { Dock = DockStyle.Bottom, Height = 0, ForeColor = Color.DimGray, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
         readonly TextBox input = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, AcceptsReturn = false };
-        readonly Button btSend = new Button(), btNewChat = new Button();
+        readonly Button btSend = new Button(), btNewChat = new Button(), btHistory = new Button(), btMic = new Button();
+        int histPos = -1;        // domanda della cronologia mostrata con ↑/↓ (-1 = nessuna: si sta scrivendo)
+        string histDraft = "";   // quello che si stava scrivendo prima di sfogliare la cronologia
         readonly System.Windows.Forms.Timer busyTimer = new System.Windows.Forms.Timer { Interval = 1000 };
 
         TermTab cur;
@@ -262,6 +324,9 @@ namespace CorbolPrompt
             tools.Font = big;
             more.Font = new Font("Segoe UI", 12f);
             foreach (ToolStripDropDown dd in new ToolStripDropDown[] { tbFav.DropDown, more.DropDown, newMenu, tabMenu, listMenu }) dd.Font = big;
+            foreach (ToolStripDropDown dd in new ToolStripDropDown[] { newMenu, tabMenu, listMenu }) KeepOnScreen(dd);
+            KeepOnScreen(tbFav);
+            KeepOnScreen(more);
             topBar.Height = tabStrip.Height;
             topBar.Controls.Add(tabStrip);
             topBar.Controls.Add(tools);
@@ -1025,9 +1090,13 @@ namespace CorbolPrompt
             BuildMoreMenu(more);
             BuildTermMenu();
             aiTitle.Text = L.T("Assistente", "Assistant");
-            btNewChat.Text = L.T("Nuova", "New");
+            btNewChat.Text = L.T("Nuova chat", "New chat");
+            btHistory.Text = "🕘 " + L.T("Recenti", "Recent");
+            btMic.Text = "🎤 " + L.T("Detta", "Dictate");
+            tips.SetToolTip(btMic, L.T("Detta la domanda (dettatura vocale di Windows, Win+H)", "Dictate the question (Windows voice typing, Win+H)"));
             tips.SetToolTip(btNewChat, L.T("Nuova conversazione: l'assistente dimentica quella di questa scheda", "New conversation: the assistant forgets the one of this tab"));
-            tips.SetToolTip(input, L.T("Invio = chiedi, Maiusc+Invio = a capo, Esc = torna al terminale", "Enter = ask, Shift+Enter = new line, Esc = back to the terminal"));
+            tips.SetToolTip(input, L.T("Invio = chiedi, Maiusc+Invio = a capo, ↑/↓ = domande già fatte, Esc = torna al terminale", "Enter = ask, Shift+Enter = new line, ↑/↓ = previous questions, Esc = back to the terminal"));
+            tips.SetToolTip(btHistory, L.T("Domande recenti", "Recent questions"));
             UpdateSendButton();
             UpdateService();
             UpdateBusy();
@@ -1054,10 +1123,59 @@ namespace CorbolPrompt
                 "Double click  select a word\nCtrl+click on an address or a path  open it\nClick the red mark left of a command  the assistant explains the error\nDrag a file onto the terminal  types its path"), L.T("Scorciatoie da tastiera", "Keyboard shortcuts"), MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
+        // Con più schermi WinForms mette il menu sullo schermo dove ne cade la parte più grande, non su quello del pulsante:
+        // vicino al bordo tra due monitor menu e sottomenu finivano sull'altro schermo. Spostarli dopo l'apertura non serve
+        // (WinForms ignora la nuova posizione): si sceglie la direzione PRIMA che si aprano, in modo che ci stiano
+        // sullo schermo della voce da cui partono (destra o sinistra, sotto o sopra). Vale per i sottomenu di ogni livello.
+        readonly HashSet<ToolStripDropDown> onScreenMenus = new HashSet<ToolStripDropDown>();
+        readonly HashSet<ToolStripDropDownItem> onScreenItems = new HashSet<ToolStripDropDownItem>();
+
+        // menu col tasto destro (ContextMenuStrip): i suoi sottomenu
+        void KeepOnScreen(ToolStripDropDown dd)
+        {
+            if (!onScreenMenus.Add(dd)) return;
+            dd.Disposed += delegate { onScreenMenus.Remove(dd); };
+            dd.Opened += delegate { KeepChildrenOnScreen(dd); };
+        }
+
+        void KeepChildrenOnScreen(ToolStripDropDown dd)
+        {
+            foreach (var it in dd.Items.OfType<ToolStripDropDownItem>()) KeepOnScreen(it);
+        }
+
+        // pulsante della barra o voce con sottomenu
+        void KeepOnScreen(ToolStripDropDownItem item)
+        {
+            if (!onScreenItems.Add(item)) return;
+            item.Disposed += delegate { onScreenItems.Remove(item); };
+            // registrato dopo chi riempie il menu all'apertura: la misura è quella vera
+            item.DropDownOpening += delegate { ChooseDropDownDirection(item); };
+            item.DropDownOpened += delegate { KeepChildrenOnScreen(item.DropDown); };   // anche i sottomenu creati all'apertura
+        }
+
+        static void ChooseDropDownDirection(ToolStripDropDownItem item)
+        {
+            if (item.Owner == null) return;
+            var anchor = item.Owner.RectangleToScreen(item.Bounds);
+            var wa = Screen.FromRectangle(anchor).WorkingArea;
+            var sz = item.DropDown.GetPreferredSize(Size.Empty);
+            if (item.IsOnDropDown)
+                item.DropDownDirection = anchor.Right + sz.Width <= wa.Right || anchor.Left - sz.Width < wa.Left
+                    ? ToolStripDropDownDirection.Right : ToolStripDropDownDirection.Left;
+            else
+            {
+                bool right = anchor.Left + sz.Width <= wa.Right;
+                bool below = anchor.Bottom + sz.Height <= wa.Bottom || anchor.Top - sz.Height < wa.Top;
+                item.DropDownDirection = below ? (right ? ToolStripDropDownDirection.BelowRight : ToolStripDropDownDirection.BelowLeft)
+                                               : (right ? ToolStripDropDownDirection.AboveRight : ToolStripDropDownDirection.AboveLeft);
+            }
+        }
+
         void BuildTermMenu()
         {
             var old = termMenu;
             termMenu = new ContextMenuStrip { Font = new Font("Segoe UI", 10f) };
+            KeepOnScreen(termMenu);
             foreach (var t in Tabs) t.View.ContextMenuStrip = termMenu;
             if (old != null) old.Dispose();
             var copy = new ToolStripMenuItem(L.T("Copia", "Copy")) { ShortcutKeyDisplayString = "Ctrl+C" };
@@ -1192,27 +1310,48 @@ namespace CorbolPrompt
             aiService.Click += delegate { ShowAiSettings(); };
 
             var inputRow = new Panel { Dock = DockStyle.Bottom, Height = S(84), Padding = new Padding(0, 6, 0, 0), BackColor = Color.White };
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Right, FlowDirection = FlowDirection.TopDown, Width = S(96), WrapContents = false, Padding = new Padding(6, 0, 0, 0), BackColor = Color.White };
-            btSend.Size = new Size(S(88), S(30)); btSend.Margin = new Padding(0, 0, 0, 4);
-            btNewChat.Size = new Size(S(88), S(26)); btNewChat.Margin = new Padding(0);
+            // Pulsanti sotto la domanda, grandi e col testo scritto, in 4 colonne uguali che seguono la larghezza del pannello
+            // (come in Corbol3D): detta, domande recenti, nuova conversazione, Chiedi (che diventa Ferma mentre l'assistente lavora)
+            var buttons = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = S(44), ColumnCount = 4, RowCount = 1, Padding = new Padding(0, 6, 0, 0), BackColor = Color.White };
+            for (int i = 0; i < 4; i++) buttons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25f));
+            buttons.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            foreach (var b in new[] { btMic, btHistory, btNewChat, btSend })
+            {
+                b.Dock = DockStyle.Fill;
+                b.Margin = new Padding(0, 0, S(6), 0);
+                b.UseMnemonic = false;
+            }
+            btSend.Margin = new Padding(0);
+            btSend.Font = new Font("Segoe UI", 10f, FontStyle.Bold);
             btSend.Click += delegate { SendOrStop(); };
             btNewChat.Click += delegate { NewConversation(); };
-            buttons.Controls.Add(btSend);
-            buttons.Controls.Add(btNewChat);
+            btHistory.Click += delegate { ShowQuestionMenu(); };
+            btMic.Click += delegate { Dictate(); };
+            buttons.Controls.Add(btMic, 0, 0);
+            buttons.Controls.Add(btHistory, 1, 0);
+            buttons.Controls.Add(btNewChat, 2, 0);
+            buttons.Controls.Add(btSend, 3, 0);
             input.Font = new Font("Segoe UI", 9.5f);
             input.KeyDown += (s, e) =>
             {
                 if (e.KeyCode == Keys.Enter && !e.Shift) { e.SuppressKeyPress = true; SendOrStop(); }
                 else if (e.KeyCode == Keys.Escape && cur != null) { e.SuppressKeyPress = true; cur.View.Focus(); }
+                // ↑ sulla prima riga / ↓ sull'ultima: sfoglia le domande già fatte, come nel terminale
+                else if (e.KeyCode == Keys.Up && e.Modifiers == Keys.None && input.GetLineFromCharIndex(input.SelectionStart) == 0)
+                { if (BrowseQuestions(-1)) e.Handled = e.SuppressKeyPress = true; }
+                else if (e.KeyCode == Keys.Down && e.Modifiers == Keys.None && input.GetLineFromCharIndex(input.SelectionStart) == input.GetLineFromCharIndex(input.TextLength))
+                { if (BrowseQuestions(1)) e.Handled = e.SuppressKeyPress = true; }
             };
+            // se si modifica una domanda ripresa, diventa la nuova bozza
+            input.TextChanged += delegate { if (histPos >= 0 && !browsing) histPos = -1; };
             inputRow.Controls.Add(input);
-            inputRow.Controls.Add(buttons);
             lbBusy.Font = Font;
 
             panel.Controls.Add(chatHost);
             panel.Controls.Add(cmdPanel);
             panel.Controls.Add(lbBusy);
             panel.Controls.Add(inputRow);
+            panel.Controls.Add(buttons);   // aggiunto dopo la domanda: prende posto prima, in fondo al pannello
             panel.Controls.Add(header);
             cmdPanel.Height = 0;
             cmdPanel.Resize += delegate { foreach (Control c in cmdPanel.Controls) c.Width = cmdPanel.ClientSize.Width - 2; };
@@ -1526,8 +1665,85 @@ namespace CorbolPrompt
             if (cur.Busy) { cur.AiCancel.Cancel(); return; }
             string text = input.Text.Trim();
             if (text.Length == 0) return;
+            QuestionHistory.Add(text);
+            histPos = -1; histDraft = "";
             input.Clear();
             Ask(text);
+        }
+
+        [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, int flags, IntPtr extra);
+
+        // Dettatura: cursore in fondo alla domanda e dettatura vocale di Windows (Win+H), che scrive nel campo col focus
+        void Dictate()
+        {
+            FocusAssistant();
+            input.SelectionStart = input.TextLength;
+            const byte LWin = 0x5B, H = 0x48;
+            const int KeyUp = 2;
+            keybd_event(LWin, 0, 0, IntPtr.Zero);
+            keybd_event(H, 0, 0, IntPtr.Zero);
+            keybd_event(H, 0, KeyUp, IntPtr.Zero);
+            keybd_event(LWin, 0, KeyUp, IntPtr.Zero);
+        }
+
+        bool browsing;   // il testo lo sta cambiando la cronologia, non l'utente
+
+        // dir -1 = domanda precedente, +1 = successiva; false se non c'è niente da sfogliare (la freccia muove il cursore)
+        bool BrowseQuestions(int dir)
+        {
+            var items = QuestionHistory.Items;
+            if (items.Count == 0) return false;
+            int pos;
+            if (histPos < 0)
+            {
+                if (dir > 0) return false;
+                histDraft = input.Text;
+                pos = items.Count - 1;
+            }
+            else
+            {
+                pos = histPos + dir;
+                if (pos < 0) return true;   // già alla più vecchia
+            }
+            browsing = true;
+            if (pos >= items.Count) { histPos = -1; input.Text = histDraft; }
+            else { histPos = pos; input.Text = items[pos]; }
+            browsing = false;
+            input.SelectionStart = input.TextLength;
+            return true;
+        }
+
+        void ShowQuestionMenu()
+        {
+            var menu = new ContextMenuStrip();
+            var items = QuestionHistory.Items;
+            if (items.Count == 0) menu.Items.Add(new ToolStripMenuItem(L.T("Nessuna domanda fatta finora", "No questions asked yet")) { Enabled = false });
+            for (int i = items.Count - 1; i >= Math.Max(0, items.Count - 25); i--)
+            {
+                string q = items[i];
+                string label = q.Replace("\r", "").Replace("\n", " ⏎ ");
+                if (label.Length > 80) label = label.Substring(0, 79) + "…";
+                var mi = new ToolStripMenuItem(label.Replace("&", "&&"));
+                if (q.Length > 80 || q.Contains("\n")) mi.ToolTipText = q.Length > 600 ? q.Substring(0, 600) + "…" : q;
+                mi.Click += delegate
+                {
+                    browsing = true; input.Text = q; browsing = false;
+                    histPos = -1;
+                    FocusAssistant();
+                    input.SelectionStart = input.TextLength;
+                };
+                menu.Items.Add(mi);
+            }
+            if (items.Count > 0)
+            {
+                menu.Items.Add(new ToolStripSeparator());
+                var clear = new ToolStripMenuItem(L.T("Cancella la cronologia delle domande", "Clear the question history"));
+                clear.Click += delegate { QuestionHistory.Clear(); histPos = -1; };
+                menu.Items.Add(clear);
+            }
+            menu.Closed += delegate { BeginInvoke((Action)menu.Dispose); };
+            KeepOnScreen(menu);
+            menu.Show(btHistory, Point.Empty, ToolStripDropDownDirection.AboveRight);
         }
 
         static readonly Regex TabWords = new Regex(@"\b(schede|tabs|altra scheda|other tab)\b", RegexOptions.IgnoreCase);

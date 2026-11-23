@@ -83,7 +83,9 @@ The panel on the right. At the top it always shows the **service** in use and, f
 - Type a question and press **Enter** (Shift+Enter for a new line, Esc goes back to the terminal). Examples: *"how do I find files larger than 1 GB?"*, *"what does this error mean?"*, *"create a git repository here"*.
 - The assistant gets your question, the tab's shell and folder, the names of the other tabs and, if you allow it, the **last lines of the screen** and the selected text. If your question names another tab (or speaks of "the tabs"), it also gets that tab's last lines.
 - Each command it suggests becomes a **▶** button below the conversation: **click** runs it in the active tab, **right-click** pastes it without running, copies it or adds it to favorites. Lisp code goes to a Lisp tab (opened if needed). Nothing runs without your click.
-- Each tab has its own conversation; **New** starts it over.
+- The buttons below the question: **🎤 Dictate** (Windows voice typing, Win+H: speak and the text appears in the question), **🕘 Recent**, **New chat**, **Ask** (it becomes **Stop** while the assistant works).
+- **Previous questions:** **↑ / ↓** in the question box bring them back, like in the terminal; **🕘 Recent** lists the latest ones in a menu. They are shared by all tabs and kept between runs (the last 200); the menu also has *Clear the question history*.
+- Each tab has its own conversation; **New chat** starts it over.
 - **Explain the screen with the assistant** (right-click the terminal) asks for an explanation of the last lines, or of the selected text.
 
 ### Assistant settings

@@ -58,8 +58,32 @@ namespace CorbolPrompt
         long selL1, selL2; int selC1, selC2;
         float scale = 1f;
 
+        // La rotellina di Windows va al controllo col focus, non a quello sotto il mouse: con le schede affiancate
+        // (e dopo che i SplitContainer della griglia si sono presi il focus) non scorreva più niente.
+        // Questo filtro la manda al terminale che sta sotto il puntatore.
+        sealed class WheelFilter : IMessageFilter
+        {
+            [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
+            [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+
+            public bool PreFilterMessage(ref Message m)
+            {
+                if (m.Msg != 0x020A) return false;   // WM_MOUSEWHEEL
+                long lp = (long)m.LParam;
+                var pt = new Point((short)(lp & 0xFFFF), (short)((lp >> 16) & 0xFFFF));
+                var v = Control.FromHandle(WindowFromPoint(pt)) as TermView;
+                if (v == null || v.Handle == m.HWnd || !v.Visible) return false;
+                var f = v.FindForm();
+                if (f == null || Form.ActiveForm != f) return false;   // non sotto una finestra di dialogo aperta sopra
+                SendMessage(v.Handle, m.Msg, m.WParam, m.LParam);
+                return true;
+            }
+        }
+        static bool wheelFilterOn;
+
         public TermView(Terminal term, float fontSize)
         {
+            if (!wheelFilterOn) { wheelFilterOn = true; Application.AddMessageFilter(new WheelFilter()); }
             Term = term;
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint |
                      ControlStyles.ResizeRedraw | ControlStyles.Selectable, true);
