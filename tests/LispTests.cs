@@ -72,6 +72,7 @@ namespace CorbolPrompt
             Data();
             PowerShellData();
             Ai();
+            Windows();
             GuideExamples();
             Console.WriteLine(fail == 0 ? "TUTTI OK (" + total + " controlli)" : fail + " FALLITI su " + total);
             return fail == 0 ? 0 : 1;
@@ -378,6 +379,113 @@ namespace CorbolPrompt
             Check("(sparkline :v '((:v 0) (:v 10)))", "\"▁█\"");
             Check("(sparkline #(2.5 0.5))", "\"█▁\"");
             Check("(sparkline '(1 \"x\"))", "ERRORE: sparkline: il valore \"x\" non è un numero");
+        }
+
+        // ---------------------------------------------------------------------------
+        // Windows: appunti (solo la conversione in testo, per non toccare gli appunti veri), notify, http con un
+        // server locale, watch ed every. choose-file e choose-folder aprono una finestra: non si provano qui.
+
+        // Un server HTTP minimo su 127.0.0.1: risponde secondo il percorso
+        static int StartServer()
+        {
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            listener.Start();
+            var th = new System.Threading.Thread(() =>
+            {
+                while (true)
+                {
+                    var client = listener.AcceptTcpClient();
+                    try
+                    {
+                        var stream = client.GetStream();
+                        var head = new StringBuilder();
+                        while (!head.ToString().EndsWith("\r\n\r\n")) { int b = stream.ReadByte(); if (b < 0) break; head.Append((char)b); }
+                        var lines = head.ToString().Split(new[] { "\r\n" }, StringSplitOptions.None);
+                        var first = lines[0].Split(' ');
+                        string method = first[0], path = first.Length > 1 ? first[1] : "/";
+                        int length = 0; string test = "", ctype = "";
+                        foreach (var l in lines)
+                        {
+                            int c = l.IndexOf(':');
+                            if (c < 0) continue;
+                            string k = l.Substring(0, c).Trim().ToLowerInvariant(), v = l.Substring(c + 1).Trim();
+                            if (k == "content-length") length = int.Parse(v);
+                            if (k == "x-test") test = v;
+                            if (k == "content-type") ctype = v;
+                        }
+                        var body = new byte[length];
+                        for (int got = 0; got < length; ) { int n = stream.Read(body, got, length - got); if (n <= 0) break; got += n; }
+                        string status = "200 OK", type = "text/plain; charset=utf-8", text;
+                        if (path == "/text") text = "ciao è";
+                        else if (path == "/json") { type = "application/json"; text = "{\"Name\":\"x\",\"N\":[1,2]}"; }
+                        else if (path == "/echo") text = method + "|" + Encoding.UTF8.GetString(body) + "|" + test + "|" + ctype;
+                        else if (path == "/slow") { System.Threading.Thread.Sleep(3000); text = "tardi"; }
+                        else { status = "404 Not Found"; text = "manca"; }
+                        var bytes = Encoding.UTF8.GetBytes(text);
+                        var resp = Encoding.ASCII.GetBytes("HTTP/1.1 " + status + "\r\nContent-Type: " + type + "\r\nContent-Length: " + bytes.Length + "\r\nConnection: close\r\n\r\n");
+                        stream.Write(resp, 0, resp.Length);
+                        stream.Write(bytes, 0, bytes.Length);
+                        stream.Flush();
+                    }
+                    catch { }
+                    finally { client.Close(); }
+                }
+            }) { IsBackground = true };
+            th.Start();
+            return ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        }
+
+        static void Windows()
+        {
+            Section("Windows");
+            // appunti: righe di dati come testo separato da tabulazioni, che si incolla in Excel
+            CheckValue("ClipboardText di righe", it.ClipboardText(it.EvalString("'((:name \"a\" :n 1) (:name \"b\" :x 2))")), "name\tn\tx\r\na\t1\t\r\nb\t\t2\r\n");
+            CheckValue("ClipboardText di liste", it.ClipboardText(it.EvalString("'((1 \"x y\") (2 nil))")), "1\tx y\r\n2\t\r\n");
+            CheckValue("ClipboardText di una stringa", it.ClipboardText("riga1\nriga2"), "riga1\nriga2");
+            CheckValue("ClipboardText di numeri", it.ClipboardText(it.EvalString("'(1 2)")), "1\r\n2\r\n");
+            CheckValue("ClipboardText di una plist", it.ClipboardText(it.EvalString("'(:a 1)")), "(:a 1)");
+
+            // notify: senza l'app diventa una riga di testo; con l'app passa da NotifyHook
+            CheckOutput("(notify \"Fatto\" \"backup finito\")", "\x1b[93m🔔 Fatto — backup finito\x1b[0m\n");
+            string notified = null;
+            it.NotifyHook = (t, x) => notified = t + "|" + x;
+            Check("(notify \"Ciao\" 42)", "nil");
+            CheckValue("NotifyHook", notified, "Ciao|42");
+            it.NotifyHook = null;
+
+            // http, con un server locale
+            int port = StartServer();
+            it.EvalString("(defparameter *u* \"http://127.0.0.1:" + port + "\")");
+            Check("(http-get (format nil \"~a/text\" *u*))", "\"ciao è\"");
+            Check("(http-json (format nil \"~a/json\" *u*))", "(:name \"x\" :n (1 2))");
+            Check("(http-post (format nil \"~a/echo\" *u*) \"corpo\" :headers '(:x-test \"sì\"))", "\"POST|corpo|sì|text/plain; charset=utf-8\"");
+            Check("(http-post (format nil \"~a/echo\" *u*) '(:a 1))", "\"POST|{\\\"a\\\":1}||application/json\"");
+            Check("(http-get (format nil \"~a/echo\" *u*) :headers '(:content-type \"text/csv\"))", "\"GET|||text/csv\"");
+            Check("(http-json (format nil \"~a/json\" *u*) :body '(:q 1))", "(:name \"x\" :n (1 2))");
+            Check("(http-get (format nil \"~a/nulla\" *u*))", "ERRORE: http: 404 Not Found: manca (GET http://127.0.0.1:" + port + "/nulla)");
+            Check("(http-get (format nil \"~a/slow\" *u*) :timeout 0.5)", "ERRORE: http: no answer within 0.5 s (GET http://127.0.0.1:" + port + "/slow)");
+            Check("(http-get \"ftp://x\")", "ERRORE: http: indirizzo non valido (serve http:// o https://): ftp://x");
+            Check("(http-get *u* :headers 5)", "ERRORE: http: :headers va dato come plist, per esempio '(:accept \"text/csv\")");
+
+            // watch: ridisegna sul posto; :times la ferma, return esce col valore
+            it.EvalString("(defparameter *w* 0)");
+            term.Clear();
+            Check("(watch 0 :times 2 (incf *w*))", "nil");
+            string w = term.ToString();
+            CheckValue("watch: due giri", it.EvalString("*w*"), 2L);
+            CheckValue("watch: il secondo giro torna su di 2 righe", w.Contains("\x1b[96m1\x1b[0m\n\x1b[2F\x1b[J\x1b[2m") && w.EndsWith("\x1b[96m2\x1b[0m\n"), true);
+            CheckValue("watch: intestazione", w.StartsWith("\x1b[2mevery 0 s · "), true);
+            CheckValue("watch: QuietResult", it.QuietResult, true);
+            Check("(watch 0 (when (> (incf *w*) 4) (return :fine)))", ":fine");
+            term.Clear(); Run("(watch 0 :times 1 '((:a 1) (:a 2)))");
+            CheckValue("watch: tabella", term.ToString().Contains("\x1b[1ma\x1b[0m\n"), true);
+            term.Clear(); Run("(watch 0 :times 1 (car 5))");
+            CheckValue("watch: un errore resta nel riquadro", term.ToString().Contains("\x1b[91mError: "), true);
+            it.TermRows = 5;
+            term.Clear(); Run("(watch 0 :times 1 (format t \"~{~a~%~}\" '(1 2 3 4 5 6)))");
+            CheckValue("watch: righe in più tagliate", term.ToString().EndsWith("\n1\n2\n\x1b[2m(5 more lines)\x1b[0m\n"), true);
+            it.TermRows = 0;
+            Check("(let ((n 0)) (every 0 (incf n) (when (= n 3) (return (* n 10)))))", "30");
         }
 
         // ---------------------------------------------------------------------------

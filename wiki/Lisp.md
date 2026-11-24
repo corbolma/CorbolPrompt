@@ -286,11 +286,36 @@ giorni-tra
 Negli esempi di `ai-defun` si alternano una chiamata e il risultato atteso; il risultato si valuta, quindi una lista va scritta con l'apice: `(pari '(1 2 3 4)) '(2 4)`. I numeri si confrontano con `=` (2 e 2.0 vanno bene), il resto con `equal`.
 Sicurezza: `ai-defun` accetta solo una `defun` con il nome giusto. Se il codice usa funzioni di sistema (`sh`, `pwsh`, `run`, `ps`, file, `eval`…), la definisce ma **non** la prova sugli esempi, e lo dice: leggila prima di usarla. Le risposte dell'IA possono essere sbagliate, anche quando sembrano sicure.
 
+## Windows
+| | |
+|---|---|
+| `(clipboard)` | il testo negli appunti, o `nil` |
+| `(set-clipboard x)` | mette `x` negli appunti: una stringa così com'è, una lista di plist come testo separato da tabulazioni con l'intestazione (si incolla in Excel), il resto come lo stampa `princ` |
+| `(notify "titolo" ["testo"])` | una notifica di Windows; un clic riporta alla scheda |
+| `(http-get url)` | il testo della risposta; `:headers '(:authorization "Bearer …")`, `:timeout` in secondi (30 se non lo dici) |
+| `(http-post url corpo)` | come `http-get`, con un corpo: una stringa va così com'è, un dato (plist, lista) va come JSON |
+| `(http-json url)`, `(http-json url :body dato)` | la risposta letta come `json-parse`; con `:body` è una POST |
+| `(watch secondi forma...)` | ripete le forme e **ridisegna sul posto** quello che stampano e il risultato (come tabella, se lo è), finché non premi Ctrl+C; `:times n` si ferma dopo n volte, `(return x)` esce con `x` |
+| `(every secondi forma...)` | ripete le forme ogni tanti secondi, senza ridisegnare: per controlli e avvisi; Ctrl+C o `(return x)` per finire |
+| `(choose-file)` | la finestra per scegliere un file: il percorso, o `nil` se annulli; `:title`, `:filter "*.csv"`, `:save t` per salvare, `:multiple t` per una lista di file |
+| `(choose-folder)` | la finestra per scegliere una cartella |
+
+```lisp
+λ> (watch 2 (->> (ps "Get-Process | Select-Object Name, CPU") (sort-by :cpu :desc t) (take 5)))
+λ> (every 60 (when (< (:free (first (ps "Get-PSDrive C | Select-Object Free"))) 10e9)
+               (notify "Disco C" "meno di 10 GB liberi")
+               (return)))
+λ> (set-clipboard (ps "Get-Service | Select-Object Name, Status"))
+λ> (->> (http-json "https://api.github.com/repos/corbolma/CorbolPrompt/releases") (select :tag-name :published-at) (take 3))
+λ> (length (read-lines (choose-file :filter "*.txt")))
+```
+`watch` ed `every` lavorano in primo piano: mentre girano il REPL aspetta. Ctrl+C ferma `watch` senza errore.
+
 ## init.lisp
 Se crei `%APPDATA%\CorbolPrompt\init.lisp`, viene caricato all'apertura di ogni scheda Lisp: è il posto per le tue funzioni e macro di tutti i giorni.
 
 ## Differenze da Common Lisp
 Non ci sono: CLOS (`defclass`, `defmethod`), package, il sistema di condizioni con i restart, valori multipli (`values` restituisce il primo; `multiple-value-bind` lega solo il primo), frazioni e numeri complessi, reader macro, `tagbody`/`go`.
-In più rispetto a Common Lisp: i dati dalla shell (`ps`, `->>`, `{…}`, `#fn(…)`, le keyword come funzioni, JSON), l'IA (`ask`, `ask-data`, `ai-defun`, `why`), `#t`/`#f`, e `[ ]` come sinonimo di `( )`.
+In più rispetto a Common Lisp: i dati dalla shell (`ps`, `->>`, `{…}`, `#fn(…)`, le keyword come funzioni, JSON), l'IA (`ask`, `ask-data`, `ai-defun`, `why`), i grafici (`bar`, `hist`, `sparkline`), le funzioni per Windows (appunti, `notify`, `http-get`, `watch`, `choose-file`…), `#t`/`#f`, e `[ ]` come sinonimo di `( )`.
 
 L'assistente conosce esattamente questo dialetto: chiedigli pure di scrivere o spiegare codice Lisp, i blocchi che propone si eseguono con un clic nella scheda Lisp.

@@ -286,11 +286,36 @@ days-between
 In `ai-defun` examples a call alternates with the expected result; the result is evaluated, so a list needs a quote: `(evens '(1 2 3 4)) '(2 4)`. Numbers are compared with `=` (2 and 2.0 match), everything else with `equal`.
 Safety: `ai-defun` accepts only one `defun` with the right name. If the code uses system functions (`sh`, `pwsh`, `run`, `ps`, files, `eval`…), it defines it but does **not** try it on the examples, and says so: read it before using it. AI answers can be wrong, even when they sound sure.
 
+## Windows
+| | |
+|---|---|
+| `(clipboard)` | the text on the clipboard, or `nil` |
+| `(set-clipboard x)` | puts `x` on the clipboard: a string as it is, a list of plists as tab-separated text with a header row (it pastes into Excel), anything else as `princ` prints it |
+| `(notify "title" ["text"])` | a Windows notification; a click brings you back to the tab |
+| `(http-get url)` | the text of the response; `:headers '(:authorization "Bearer …")`, `:timeout` in seconds (30 by default) |
+| `(http-post url body)` | like `http-get`, with a body: a string goes as it is, data (a plist, a list) goes as JSON |
+| `(http-json url)`, `(http-json url :body data)` | the response read like `json-parse`; with `:body` it is a POST |
+| `(watch seconds form...)` | repeats the forms and **redraws in place** what they print and the result (as a table when it is one), until you press Ctrl+C; `:times n` stops after n times, `(return x)` leaves with `x` |
+| `(every seconds form...)` | repeats the forms every so many seconds, without redrawing: for checks and alerts; Ctrl+C or `(return x)` to finish |
+| `(choose-file)` | the window to pick a file: the path, or `nil` if you cancel; `:title`, `:filter "*.csv"`, `:save t` to save, `:multiple t` for a list of files |
+| `(choose-folder)` | the window to pick a folder |
+
+```lisp
+λ> (watch 2 (->> (ps "Get-Process | Select-Object Name, CPU") (sort-by :cpu :desc t) (take 5)))
+λ> (every 60 (when (< (:free (first (ps "Get-PSDrive C | Select-Object Free"))) 10e9)
+               (notify "Drive C" "less than 10 GB free")
+               (return)))
+λ> (set-clipboard (ps "Get-Service | Select-Object Name, Status"))
+λ> (->> (http-json "https://api.github.com/repos/corbolma/CorbolPrompt/releases") (select :tag-name :published-at) (take 3))
+λ> (length (read-lines (choose-file :filter "*.txt")))
+```
+`watch` and `every` run in the foreground: the REPL waits while they run. Ctrl+C stops `watch` without an error.
+
 ## init.lisp
 If you create `%APPDATA%\CorbolPrompt\init.lisp`, it is loaded when each Lisp tab opens: the place for your everyday functions and macros.
 
 ## Differences from Common Lisp
 Not available: CLOS (`defclass`, `defmethod`), packages, the condition system with restarts, multiple values (`values` returns the first one; `multiple-value-bind` binds only the first), ratios and complex numbers, reader macros, `tagbody`/`go`.
-Added on top of Common Lisp: data from the shell (`ps`, `->>`, `{…}`, `#fn(…)`, keywords as functions, JSON), AI (`ask`, `ask-data`, `ai-defun`, `why`), `#t`/`#f`, and `[ ]` as a synonym of `( )`.
+Added on top of Common Lisp: data from the shell (`ps`, `->>`, `{…}`, `#fn(…)`, keywords as functions, JSON), AI (`ask`, `ask-data`, `ai-defun`, `why`), charts (`bar`, `hist`, `sparkline`), Windows functions (clipboard, `notify`, `http-get`, `watch`, `choose-file`…), `#t`/`#f`, and `[ ]` as a synonym of `( )`.
 
 The assistant knows exactly this dialect: ask it to write or explain Lisp code; the blocks it suggests run with a click in the Lisp tab.

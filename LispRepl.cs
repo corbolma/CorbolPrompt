@@ -98,7 +98,7 @@ namespace CorbolPrompt
                 Interp.ResetDepth();
                 Interp.AtLineStart = true;
                 Interp.QuietResult = false;
-                lock (term.Sync) Interp.TermCols = term.Cols;
+                lock (term.Sync) { Interp.TermCols = term.Cols; Interp.TermRows = term.Rows; }
                 bool exit = false;
                 bool init = src != null && src.StartsWith("(load \"");
                 int code = init ? -1 : 1;   // errore, salvo che la valutazione finisca bene

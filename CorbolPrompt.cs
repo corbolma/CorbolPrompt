@@ -638,6 +638,13 @@ namespace CorbolPrompt
         void StartSession(TermTab tab, string cwd)
         {
             ISession s = tab.Shell.IsLisp ? (ISession)new LispSession(tab.Term, cwd) : new PtySession(tab.Shell, cwd);
+            var lisp = s as LispSession;
+            if (lisp != null)
+            {
+                // appunti e dialoghi del Lisp sul thread dell'interfaccia; (notify ...) come le notifiche di fine comando
+                lisp.Interp.UiInvoke = f => Invoke(new Func<object>(() => f(this)));
+                lisp.Interp.NotifyHook = (title, text) => { try { BeginInvoke((Action)(() => ShowNotice(tab, title, text, false))); } catch { } };
+            }
             s.Output += text =>
             {
                 lock (tab.Term.Sync) tab.Term.Feed(text);
@@ -1788,6 +1795,13 @@ namespace CorbolPrompt
             if (cmd.Length > 80) cmd = cmd.Substring(0, 79) + "…";
             string when = took.TotalMinutes >= 1 ? L.F("{0} min {1} s", "{0} min {1} s", (int)took.TotalMinutes, took.Seconds) : L.F("{0} s", "{0} s", (int)took.TotalSeconds);
             string title = m.Failed ? L.F("Comando fallito (codice {0})", "Command failed (exit code {0})", m.ExitCode) : L.T("Comando finito", "Command finished");
+            ShowNotice(tab, title, cmd + "\n" + tab.Title + " · " + when, m.Failed);
+        }
+
+        // Notifica di Windows; un clic riporta alla scheda
+        void ShowNotice(TermTab tab, string title, string text, bool warning)
+        {
+            if (closing) return;
             if (notifier == null)
             {
                 notifier = new NotifyIcon { Icon = Icon, Text = "CorbolPrompt" };
@@ -1798,7 +1812,8 @@ namespace CorbolPrompt
             }
             notifyTab = tab;
             notifier.Visible = true;
-            notifier.ShowBalloonTip(8000, title, cmd + "\n" + tab.Title + " · " + when, m.Failed ? ToolTipIcon.Warning : ToolTipIcon.Info);
+            // il testo di un fumetto non può essere vuoto
+            notifier.ShowBalloonTip(8000, title.Length > 0 ? title : "CorbolPrompt", text.Length > 0 ? text : " ", warning ? ToolTipIcon.Warning : ToolTipIcon.Info);
         }
 
         void BringBack(TermTab tab)

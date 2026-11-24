@@ -30,7 +30,9 @@ namespace CorbolPrompt
         {
             "sh", "pwsh", "run", "run-lines", "ps", "cd", "delete-file", "write-file", "append-file", "with-open-file", "open",
             "mkdir", "setenv", "load", "eval", "exit", "quit", "intern", "read-from-string", "symbol-function", "fdefinition",
-            "ask", "ask-data", "ai-defun", "why"
+            "ask", "ask-data", "ai-defun", "why",
+            "clipboard", "set-clipboard", "notify", "http-get", "http-post", "http-json", "watch", "watch-fn", "every",
+            "choose-file", "choose-folder"
         };
 
         const int AiDefunAttempts = 3;
