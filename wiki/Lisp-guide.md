@@ -190,18 +190,25 @@ Example: the 5 largest files in the folder, in KB:
 `(ps "...")` runs a PowerShell command and returns the result **as data**: a list of plists, one per object, with field names in lowercase and dashed (`WorkingSet64` → `:working-set64`, `WS(M)` → `:ws-m`).
 ```lisp
 λ> (take 2 (ps "Get-Service"))
-((:status "Stopped" :name "AarSvc" :display-name "Agent Activation Runtime")
- (:status "Running" :name "Appinfo" :display-name "Application Information"))
-λ> (->> (ps "Get-Process") (sort-by :ws-m :desc t) (take 3) (table))
+status   name     display-name
+───────  ───────  ────────────────────────
+Stopped  AarSvc   Agent Activation Runtime
+Running  Appinfo  Application Information
+(2 rows)
+λ> (car *1)
+(:status "Stopped" :name "AarSvc" :display-name "Agent Activation Runtime")
+λ> (->> (ps "Get-Process") (sort-by :ws-m :desc t) (take 3))
 npm-k     pm-m     ws-m   cpu-s     id  si  process-name
 ─────  ───────  ───────  ──────  ─────  ──  ──────────────────
   237  1741.14  1773.14  311.84   4524   1  VBCSCompiler
   397  1797.93  1637.74  499.02  13700   1  devenv
     0     2.62  1042.31     0.0   7868   0  Memory Compression
-(3 righe)
+(3 rows)
 ```
 Without `Select-Object`, `ps` takes the columns PowerShell would show in the console (reading every property of objects like processes can take a minute). With `Select-Object` you choose, and the names are the same in PowerShell 5.1 and 7: the safer choice in scripts. `(ps "..." :all t)` takes every property (slow); `:depth n` sets how deep to go into nested objects (2).
 Enums become text (`"Running"`), dates ISO text (`"2026-11-24T09:04:21+01:00"`). A PowerShell error becomes a Lisp error that `handler-case` can catch.
+
+**Automatic table.** When the result is a list of plists, hash tables or structures, the REPL shows it as a table: at most 30 rows, fitted to the window width (columns that are too wide are shortened with `…`, those that do not fit are hidden and named at the bottom). The real data stays in `*1` (and the two results before in `*2`, `*3`): `(table *1)` shows every row, `(print *1)` the list as it is, `(select :name :id *1)` only some columns.
 
 | | |
 |---|---|
@@ -216,7 +223,7 @@ Enums become text (`"Running"`), dates ISO text (`"2026-11-24T09:04:21+01:00"`).
 | `(count-by :field rows)` | how many rows for each value, most frequent first: `(("Stopped" . 177) ("Running" . 152))` |
 | `(group-by :field rows)` | rows grouped by value: `((value row row...) ...)` |
 | `(sum-by :field rows)` | the sum of the field (nils are skipped) |
-| `(table rows)`, `(table :name :id rows)` | prints an aligned table; works with lists of lists too |
+| `(table rows)`, `(table :name :id rows)` | prints an aligned table with every row; works with lists of lists too |
 | `(json-parse text)`, `(read-json file)` | from JSON: objects → plists, arrays → lists, `true` → t, `false`/`null` → nil |
 | `(json-encode data)`, `(json-encode data :pretty t)` | to JSON: plists, hash tables and structures → objects, lists and vectors → arrays; `:false` writes `false` |
 

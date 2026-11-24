@@ -992,7 +992,7 @@ namespace CorbolPrompt
             });
             Def("directory", 0, 1, a => Call(Intern("ls"), a));
             Def("read-file", 1, 1, a => File.ReadAllText(FullPath(Str(a[0])), Encoding.UTF8));
-            Def("cat", 1, 1, a => { Write(File.ReadAllText(FullPath(Str(a[0])), Encoding.UTF8)); FreshLine(); return null; });
+            Def("cat", 1, 1, a => { Write(File.ReadAllText(FullPath(Str(a[0])), Encoding.UTF8)); FreshLine(); QuietResult = true; return null; });
             Def("read-lines", 1, 1, a => ToList(File.ReadAllLines(FullPath(Str(a[0])), Encoding.UTF8).Select(l => (object)l).ToList(), null));
             Def("write-file", 2, 2, a => { File.WriteAllText(FullPath(Str(a[0])), Printer.Print(a[1], false), new UTF8Encoding(false)); return a[0]; });
             Def("append-file", 2, 2, a => { File.AppendAllText(FullPath(Str(a[0])), Printer.Print(a[1], false), new UTF8Encoding(false)); return a[0]; });

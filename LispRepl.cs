@@ -97,6 +97,8 @@ namespace CorbolPrompt
                 Interp.Interrupt = false;
                 Interp.ResetDepth();
                 Interp.AtLineStart = true;
+                Interp.QuietResult = false;
+                lock (term.Sync) Interp.TermCols = term.Cols;
                 bool exit = false;
                 bool init = src != null && src.StartsWith("(load \"");
                 int code = init ? -1 : 1;   // errore, salvo che la valutazione finisca bene
@@ -104,7 +106,17 @@ namespace CorbolPrompt
                 {
                     var result = Interp.EvalString(src);
                     Interp.FreshLine();
-                    if (!init) { Emit("\x1b[96m" + Printer.Print(result, true) + "\x1b[0m\n"); code = 0; }
+                    if (!init)
+                    {
+                        Interp.Intern("*3").Value = Interp.Intern("*2").Value;
+                        Interp.Intern("*2").Value = Interp.Intern("*1").Value;
+                        Interp.Intern("*1").Value = result;
+                        // liste di plist (per esempio da ps) come tabella; i dati restano in *1
+                        string table = Interp.AutoTable(result);
+                        if (table != null) Emit(table);
+                        else if (!(result == null && Interp.QuietResult)) Emit("\x1b[96m" + Printer.Print(result, true) + "\x1b[0m\n");
+                        code = 0;
+                    }
                 }
                 catch (LispExit) { exit = true; }
                 catch (LispInterrupted) { Interp.FreshLine(); Emit("\x1b[33m; " + L.T("interrotto", "interrupted") + "\x1b[0m\n"); code = init ? -1 : 130; }

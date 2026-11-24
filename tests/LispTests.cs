@@ -324,11 +324,42 @@ namespace CorbolPrompt
 
             // tabella
             CheckOutput("(table '((:name \"b\" :cpu 10) (:name \"aaa\" :cpu 5)))",
-                "\x1b[1mname  cpu\x1b[0m\n\x1b[2m────  ───\x1b[0m\nb      10\naaa     5\n\x1b[2m(2 righe)\x1b[0m\n");
+                "\x1b[1mname  cpu\x1b[0m\n\x1b[2m────  ───\x1b[0m\nb      10\naaa     5\n\x1b[2m(2 rows)\x1b[0m\n");
             CheckOutput("(table :cpu '((:name \"b\" :cpu 10)))", "\x1b[1mcpu\x1b[0m\n\x1b[2m───\x1b[0m\n 10\n");
-            CheckOutput("(table '((1 \"x\") (22 \"yy\")))", " 1  x\n22  yy\n\x1b[2m(2 righe)\x1b[0m\n");
+            CheckOutput("(table '((1 \"x\") (22 \"yy\")))", " 1  x\n22  yy\n\x1b[2m(2 rows)\x1b[0m\n");
             CheckOutput("(table '((:d \"2026-11-24T09:04:21.757+01:00\" :v nil)))", "\x1b[1md                 v\x1b[0m\n\x1b[2m────────────────  ─\x1b[0m\n2026-11-24 09:04\n");
-            CheckOutput("(table nil)", "\x1b[2m(nessuna riga)\x1b[0m\n");
+            CheckOutput("(table nil)", "\x1b[2m(no rows)\x1b[0m\n");
+            CheckOutput("(table '((:a 1) nil (:b 2)))", "\x1b[1ma  b\x1b[0m\n\x1b[2m─  ─\x1b[0m\n1\n\n   2\n\x1b[2m(3 rows)\x1b[0m\n");
+
+            // larghezza del terminale: si stringono le colonne larghe, poi si nascondono le ultime
+            it.TermCols = 21;
+            CheckOutput("(table '((:id 1 :testo \"una descrizione lunga\")))", "\x1b[1mid  testo\x1b[0m\n\x1b[2m──  ────────────────\x1b[0m\n 1  una descrizione…\n");
+            it.TermCols = 12;
+            CheckOutput("(table '((:aaaa 1 :bbbb 2 :cccc 3)))", "\x1b[1maaaa  bbbb\x1b[0m\n\x1b[2m────  ────\x1b[0m\n   1     2\n\x1b[2m(1 hidden columns: cccc)\x1b[0m\n");
+            it.TermCols = 0;
+            // table non fa stampare nil al REPL; i risultati normali sì
+            Run("(table '((:a 1)))"); CheckValue("QuietResult dopo table", it.QuietResult, true);
+            it.QuietResult = false; Run("(+ 1 2)"); CheckValue("QuietResult dopo (+ 1 2)", it.QuietResult, false);
+
+            // tabella automatica del REPL: solo per liste di plist, tabelle hash o strutture
+            CheckValue("AutoTable di (1 2)", it.AutoTable(it.EvalString("'(1 2)")), null);
+            CheckValue("AutoTable di una plist sola", it.AutoTable(it.EvalString("'(:a 1 :b 2)")), null);
+            CheckValue("AutoTable di nil", it.AutoTable(null), null);
+            CheckValue("AutoTable di liste miste", it.AutoTable(it.EvalString("'((:a 1) 5)")), null);
+            CheckValue("AutoTable di plist", it.AutoTable(it.EvalString("'((:a 1) (:a 22))")), "\x1b[1m a\x1b[0m\n\x1b[2m──\x1b[0m\n 1\n22\n\x1b[2m(2 rows)\x1b[0m\n");
+            CheckValue("AutoTable di strutture", it.AutoTable(it.EvalString("(list (make-pt :x 1 :y 2))")), "\x1b[1mx  y\x1b[0m\n\x1b[2m─  ─\x1b[0m\n1  2\n");
+            string many = (string)it.AutoTable(it.EvalString("(loop for i from 1 to 40 collect (list :n i))"));
+            CheckValue("AutoTable di 40 righe", many.EndsWith("\n30\n\x1b[2m(showing 30 of 40 rows, all of them: (table *1))\x1b[0m\n"), true);
+        }
+
+        static void CheckValue(string what, object got, object expected)
+        {
+            total++;
+            if (Equals(got, expected)) return;
+            fail++;
+            Console.WriteLine("FALLITO [" + section + "] " + what);
+            Console.WriteLine("    dato:   " + (got == null ? "null" : got.ToString().Replace("\n", "\\n")));
+            Console.WriteLine("    atteso: " + (expected == null ? "null" : expected.ToString().Replace("\n", "\\n")));
         }
 
         // ---------------------------------------------------------------------------

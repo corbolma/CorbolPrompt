@@ -190,9 +190,14 @@ Esempio: i 5 file più grandi della cartella, in KB:
 `(ps "...")` esegue un comando PowerShell e restituisce il risultato **come dati**: una lista di plist, una per oggetto, con i campi in minuscolo e col trattino (`WorkingSet64` → `:working-set64`, `WS(M)` → `:ws-m`).
 ```lisp
 λ> (take 2 (ps "Get-Service"))
-((:status "Stopped" :name "AarSvc" :display-name "Agent Activation Runtime")
- (:status "Running" :name "Appinfo" :display-name "Informazioni applicazioni"))
-λ> (->> (ps "Get-Process") (sort-by :ws-m :desc t) (take 3) (table))
+status   name     display-name
+───────  ───────  ─────────────────────────
+Stopped  AarSvc   Agent Activation Runtime
+Running  Appinfo  Informazioni applicazioni
+(2 righe)
+λ> (car *1)
+(:status "Stopped" :name "AarSvc" :display-name "Agent Activation Runtime")
+λ> (->> (ps "Get-Process") (sort-by :ws-m :desc t) (take 3))
 npm-k     pm-m     ws-m   cpu-s     id  si  process-name
 ─────  ───────  ───────  ──────  ─────  ──  ──────────────────
   237  1741.14  1773.14  311.84   4524   1  VBCSCompiler
@@ -202,6 +207,8 @@ npm-k     pm-m     ws-m   cpu-s     id  si  process-name
 ```
 Senza `Select-Object`, `ps` prende le colonne che PowerShell mostrerebbe in console (leggere tutte le proprietà di oggetti come i processi richiede anche un minuto). Con `Select-Object` decidi tu, e i nomi non cambiano tra PowerShell 5.1 e 7: negli script è la scelta più sicura. `(ps "..." :all t)` prende tutte le proprietà (lento); `:depth n` decide quanto scendere negli oggetti annidati (2).
 Gli enum diventano testo (`"Running"`), le date testo ISO (`"2026-11-24T09:04:21+01:00"`). Un errore di PowerShell diventa un errore Lisp, che `handler-case` può prendere.
+
+**Tabella automatica.** Quando il risultato è una lista di plist, tabelle hash o strutture, il REPL lo mostra come tabella: al massimo 30 righe, adattata alla larghezza della finestra (le colonne troppo larghe si accorciano con `…`, quelle che non ci stanno vengono nascoste e nominate in fondo). I dati veri restano in `*1` (e i due risultati prima in `*2`, `*3`): `(table *1)` mostra tutte le righe, `(print *1)` la lista com'è, `(select :name :id *1)` solo alcune colonne.
 
 | | |
 |---|---|
@@ -216,7 +223,7 @@ Gli enum diventano testo (`"Running"`), le date testo ISO (`"2026-11-24T09:04:21
 | `(count-by :campo righe)` | quante righe per ogni valore, dal più frequente: `(("Stopped" . 177) ("Running" . 152))` |
 | `(group-by :campo righe)` | le righe raggruppate per valore: `((valore riga riga...) ...)` |
 | `(sum-by :campo righe)` | la somma del campo (i nil non contano) |
-| `(table righe)`, `(table :name :id righe)` | stampa una tabella allineata; funziona anche con liste di liste |
+| `(table righe)`, `(table :name :id righe)` | stampa una tabella allineata con tutte le righe; funziona anche con liste di liste |
 | `(json-parse testo)`, `(read-json file)` | dal JSON: oggetti → plist, array → liste, `true` → t, `false`/`null` → nil |
 | `(json-encode dato)`, `(json-encode dato :pretty t)` | al JSON: plist, tabelle hash e strutture → oggetti, liste e vettori → array; `:false` scrive `false` |
 

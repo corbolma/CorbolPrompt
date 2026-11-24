@@ -178,6 +178,8 @@ namespace CorbolPrompt
                 if (IsPlist(data) || data is Dictionary<object, object> || data is LispStruct) return pick(data);
                 return SameSeq(data, Seq(data).Select(pick).ToList());
             });
+            // *1 *2 *3: gli ultimi tre risultati del REPL
+            foreach (var n in new[] { "*1", "*2", "*3" }) Intern(n).Value = null;
             Def("plist-keys", 1, 1, a => ToList(PlistPairs(a[0]).Select(p => (object)p.Key).ToList(), null));
             Def("plistp", 1, 1, a => Bool(IsPlist(a[0])));
 
@@ -189,7 +191,8 @@ namespace CorbolPrompt
                 var data = a[a.Length - 1];
                 if (IsPlist(data) || data is Dictionary<object, object> || data is LispStruct) data = new Cons(data, null);
                 FreshLine();
-                Write(RenderTable(Seq(data), cols.Cast<Sym>().ToList()));
+                Write(RenderTable(Seq(data), cols.Cast<Sym>().ToList(), 0, TermCols - 1));
+                QuietResult = true;
                 return null;
             });
 
@@ -398,13 +401,37 @@ $r = @($r | ForEach-Object { if ($null -eq $_) { return }; if (__cpRaw $_) { $c 
 
         // ---------- tabella ----------
 
-        string RenderTable(List<object> rows, List<Sym> cols)
+        // Larghezza del terminale (la imposta il REPL; 0 = senza limite) e "il risultato non va stampato":
+        // table e cat hanno già scritto quello che serviva, il nil che restituiscono non dice niente.
+        public int TermCols;
+        public bool QuietResult;
+
+        static bool IsRecord(object r) { return IsPlist(r) || r is Dictionary<object, object> || r is LispStruct; }
+
+        // Il REPL mostra come tabella una lista di plist, tabelle hash o strutture
+        public string AutoTable(object result)
         {
-            const int maxCell = 48;
-            if (rows.Count == 0) return "\x1b[2m(nessuna riga)\x1b[0m\n";
-            bool keyed = rows.All(r => r == null || IsPlist(r) || r is Dictionary<object, object> || r is LispStruct);
+            var c = result as Cons;
+            if (c == null) return null;
+            var rows = new List<object>();
+            for (object l = c; l != null; l = ((Cons)l).Cdr)
+            {
+                var lc = l as Cons;
+                if (lc == null || !IsRecord(lc.Car)) return null;
+                rows.Add(lc.Car);
+            }
+            return RenderTable(rows, new List<Sym>(), 30, TermCols - 1);
+        }
+
+        // maxRows, maxWidth: 0 o meno = senza limite
+        string RenderTable(List<object> rows, List<Sym> cols, int maxRows, int maxWidth)
+        {
+            const int maxCell = 48, minCell = 6;
+            if (rows.Count == 0) return "\x1b[2m(" + L.T("nessuna riga", "no rows") + ")\x1b[0m\n";
+            bool keyed = rows.All(r => r == null || IsRecord(r));
             var headers = new List<string>();
             var cells = new List<List<object>>();
+            var shown = maxRows > 0 && rows.Count > maxRows ? rows.Take(maxRows).ToList() : rows;
             if (keyed)
             {
                 if (cols.Count == 0)
@@ -412,6 +439,7 @@ $r = @($r | ForEach-Object { if ($null -eq $_) { return }; if (__cpRaw $_) { $c 
                     var seen = new HashSet<Sym>();
                     foreach (var r in rows)
                     {
+                        if (r == null) continue;
                         IEnumerable<Sym> ks = r is Dictionary<object, object> ? ((Dictionary<object, object>)r).Keys.Select(k => k as Sym ?? Intern(":" + Str(k)))
                             : r is LispStruct ? ((LispStruct)r).Type.Slots.Select(s => Intern(":" + s.Name))
                             : PlistPairs(r).Select(p => p.Key);
@@ -419,28 +447,58 @@ $r = @($r | ForEach-Object { if ($null -eq $_) { return }; if (__cpRaw $_) { $c 
                     }
                 }
                 headers = cols.Select(c => c.Name.TrimStart(':')).ToList();
-                foreach (var r in rows) cells.Add(cols.Select(c => GetField(r, c, null)).ToList());
+                foreach (var r in shown) cells.Add(cols.Select(c => GetField(r, c, null)).ToList());
             }
             else
             {
-                foreach (var r in rows) cells.Add(r is Cons || r is object[] ? Seq(r) : new List<object> { r });
+                foreach (var r in shown) cells.Add(r is Cons || r is object[] ? Seq(r) : new List<object> { r });
                 int n = cells.Max(c => c.Count);
                 for (int i = 0; i < n; i++) headers.Add("");
             }
             int ncol = headers.Count;
             var text = cells.Select(row => Enumerable.Range(0, ncol).Select(i => Cell(i < row.Count ? row[i] : null, maxCell)).ToList()).ToList();
             var right = Enumerable.Range(0, ncol).Select(i => cells.All(row => i >= row.Count || row[i] == null || Num.Is(row[i]))).ToList();
-            var width = Enumerable.Range(0, ncol).Select(i => Math.Max(headers[i].Length, text.Max(row => row[i].Length))).ToList();
+            var width = Enumerable.Range(0, ncol).Select(i => Math.Max(headers[i].Length, text.Count == 0 ? 0 : text.Max(row => row[i].Length))).ToList();
+
+            // stare nella larghezza del terminale: prima si stringono le colonne più larghe, poi si nascondono le ultime
+            int visible = ncol;
+            if (maxWidth > 0)
+            {
+                Func<int> total = () => width.Take(visible).Sum() + 2 * (visible - 1);
+                while (total() > maxWidth)
+                {
+                    int widest = 0;
+                    for (int i = 1; i < visible; i++) if (width[i] > width[widest]) widest = i;
+                    if (width[widest] <= minCell) break;
+                    width[widest]--;
+                }
+                while (visible > 1 && total() > maxWidth) visible--;
+            }
+
             var sb = new StringBuilder();
-            Func<string, int, bool, string> pad = (s, w, r) => r ? s.PadLeft(w) : s.PadRight(w);
+            Func<string, int, bool, string> pad = (s, w, r) =>
+            {
+                if (s.Length > w) s = w > 1 ? s.Substring(0, w - 1) + "…" : s.Substring(0, w);
+                return r ? s.PadLeft(w) : s.PadRight(w);
+            };
             if (headers.Any(h => h.Length > 0))
             {
-                sb.Append("\x1b[1m").Append(string.Join("  ", Enumerable.Range(0, ncol).Select(i => pad(headers[i], width[i], right[i]))).TrimEnd()).Append("\x1b[0m\n");
-                sb.Append("\x1b[2m").Append(string.Join("  ", width.Select(w => new string('─', w)))).Append("\x1b[0m\n");
+                sb.Append("\x1b[1m").Append(string.Join("  ", Enumerable.Range(0, visible).Select(i => pad(headers[i], width[i], right[i]))).TrimEnd()).Append("\x1b[0m\n");
+                sb.Append("\x1b[2m").Append(string.Join("  ", width.Take(visible).Select(w => new string('─', w)))).Append("\x1b[0m\n");
             }
             foreach (var row in text)
-                sb.Append(string.Join("  ", Enumerable.Range(0, ncol).Select(i => pad(row[i], width[i], right[i]))).TrimEnd()).Append('\n');
-            if (rows.Count > 1) sb.Append("\x1b[2m(" + rows.Count + " righe)\x1b[0m\n");
+                sb.Append(string.Join("  ", Enumerable.Range(0, visible).Select(i => pad(row[i], width[i], right[i]))).TrimEnd()).Append('\n');
+
+            var notes = new List<string>();
+            if (shown.Count < rows.Count) notes.Add(L.F("mostrate {0} di {1} righe, tutte: (table *1)", "showing {0} of {1} rows, all of them: (table *1)", shown.Count, rows.Count));
+            else if (rows.Count > 1) notes.Add(L.F("{0} righe", "{0} rows", rows.Count));
+            if (visible < ncol)
+            {
+                var hidden = headers.Skip(visible).ToList();
+                string names = string.Join(" ", hidden.Take(6)) + (hidden.Count > 6 ? " …" : "");
+                notes.Add(L.F("{0} colonne nascoste: {1}", "{0} hidden columns: {1}", hidden.Count, names));
+            }
+            if (notes.Count > 0) sb.Append("\x1b[2m(" + string.Join("; ", notes) + ")\x1b[0m\n");
             return sb.ToString();
         }
 
