@@ -238,11 +238,43 @@ In all these functions the data comes last, so they chain with `->>`:
 ```
 Note: since keys become lowercase, `json-encode` does not bring back the original capitals (`:process-name` → `"process-name"`).
 
+## AI in the language
+These functions use the service chosen in **⋯ → Assistant settings** (Claude Code, Claude API, an OpenAI-compatible service or the local model). Ctrl+C stops the wait.
+
+| | |
+|---|---|
+| `(ask "question")`, `(ask "question" data)` | the answer as a string; the data (a list, rows from `ps`, a text) reaches the model as JSON |
+| `(ask-data "request")`, `(ask-data "request" data :fields '(:a :b))` | the answer as **data**: the model replies in JSON and Lisp reads it like `json-parse`; with `:fields` it is always a list of plists with those fields, which the REPL shows as a table |
+| `(ai-defun name (arg...) "what it does" :examples ((name 1 2) 3 ...))` | the model writes the function, Lisp defines it and tries it on the examples; if an example is wrong or signals an error, the problem goes back to the model for another try (up to 3). The code is shown |
+| `(ai-source 'name)` | the text of the function written by `ai-defun`, to save it: `(append-file "init.lisp" (ai-source 'name))` |
+| `(why)` | explains the last REPL error and suggests the fix |
+
+```lisp
+λ> (ask-data "The 3 largest cities in Italy" :fields '(:city :population))
+city    population
+──────  ──────────
+Rome       2750000
+Milan      1370000
+Naples      910000
+(3 rows)
+λ> (ask "Which of these processes looks odd?" (take 20 (ps "Get-Process")))
+λ> (ai-defun days-between (a b) "days between two \"yyyy-mm-dd\" dates (b minus a)"
+     :examples ((days-between "2026-01-01" "2026-01-31") 30
+                (days-between "2024-02-01" "2024-03-01") 29))
+(defun days-between (a b) ...)
+; tried on 2 examples
+days-between
+λ> (days-between "2026-01-01" "2026-12-25")
+358
+```
+In `ai-defun` examples a call alternates with the expected result; the result is evaluated, so a list needs a quote: `(evens '(1 2 3 4)) '(2 4)`. Numbers are compared with `=` (2 and 2.0 match), everything else with `equal`.
+Safety: `ai-defun` accepts only one `defun` with the right name. If the code uses system functions (`sh`, `pwsh`, `run`, `ps`, files, `eval`…), it defines it but does **not** try it on the examples, and says so: read it before using it. AI answers can be wrong, even when they sound sure.
+
 ## init.lisp
 If you create `%APPDATA%\CorbolPrompt\init.lisp`, it is loaded when each Lisp tab opens: the place for your everyday functions and macros.
 
 ## Differences from Common Lisp
 Not available: CLOS (`defclass`, `defmethod`), packages, the condition system with restarts, multiple values (`values` returns the first one; `multiple-value-bind` binds only the first), ratios and complex numbers, reader macros, `tagbody`/`go`.
-Added on top of Common Lisp: data from the shell (`ps`, `->>`, `{…}`, `#fn(…)`, keywords as functions, JSON), `#t`/`#f`, and `[ ]` as a synonym of `( )`.
+Added on top of Common Lisp: data from the shell (`ps`, `->>`, `{…}`, `#fn(…)`, keywords as functions, JSON), AI (`ask`, `ask-data`, `ai-defun`, `why`), `#t`/`#f`, and `[ ]` as a synonym of `( )`.
 
 The assistant knows exactly this dialect: ask it to write or explain Lisp code; the blocks it suggests run with a click in the Lisp tab.

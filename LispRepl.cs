@@ -120,11 +120,11 @@ namespace CorbolPrompt
                 }
                 catch (LispExit) { exit = true; }
                 catch (LispInterrupted) { Interp.FreshLine(); Emit("\x1b[33m; " + L.T("interrotto", "interrupted") + "\x1b[0m\n"); code = init ? -1 : 130; }
-                catch (LispError ex) { Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: ", "Error: ") + ex.Message + "\x1b[0m\n"); }
+                catch (LispError ex) { Interp.LastErrorSource = src; Interp.LastError = ex.Message; Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: ", "Error: ") + ex.Message + "\x1b[0m\n"); }
                 catch (ReturnFrom) { Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: return fuori da un blocco", "Error: return outside a block") + "\x1b[0m\n"); }
                 catch (ThrowTag) { Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: throw senza catch", "Error: throw without catch") + "\x1b[0m\n"); }
-                catch (InvalidCastException) { Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: valore del tipo sbagliato (per esempio un numero dove serve una lista o un simbolo)", "Error: value of the wrong type (for example a number where a list or a symbol is needed)") + "\x1b[0m\n"); }
-                catch (Exception ex) { Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: ", "Error: ") + ex.Message + "\x1b[0m\n"); }
+                catch (InvalidCastException) { Interp.LastErrorSource = src; Interp.LastError = "value of the wrong type (for example a number where a list or a symbol is needed)"; Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: valore del tipo sbagliato (per esempio un numero dove serve una lista o un simbolo)", "Error: value of the wrong type (for example a number where a list or a symbol is needed)") + "\x1b[0m\n"); }
+                catch (Exception ex) { Interp.LastErrorSource = src; Interp.LastError = ex.Message; Interp.FreshLine(); Emit("\x1b[91m" + L.T("Errore: ", "Error: ") + ex.Message + "\x1b[0m\n"); }
                 if (exit) { if (Exited != null) Exited(0); return; }
                 lock (edLock)
                 {

@@ -16,7 +16,7 @@ crea `CorbolPrompt.exe` nella cartella del progetto. Se manca l'icona `corbolpro
 | `Terminal.cs` | emulatore VT/xterm: schermo, cronologia, colori, sequenze di escape |
 | `TermView.cs` | disegno del terminale, tastiera, selezione, copia e incolla |
 | `Tabs.cs` | barra delle schede |
-| `Lisp.cs`, `LispLib.cs`, `LispData.cs` | l'interprete Lisp e le sue funzioni (`LispData.cs`: JSON, `ps`, tabelle) |
+| `Lisp.cs`, `LispLib.cs`, `LispData.cs`, `LispAi.cs` | l'interprete Lisp e le sue funzioni (`LispData.cs`: JSON, `ps`, tabelle; `LispAi.cs`: `ask`, `ai-defun`, `why`) |
 | `LispRepl.cs` | la riga di comando della scheda Lisp |
 | `Assistant.cs` | istruzioni per l'assistente e lettura delle risposte (blocchi di codice → pulsanti ▶) |
 | `Ai.cs`, `AiLocal.cs` | servizi dell'assistente (Claude Code, API, compatibili OpenAI, locale) e impostazioni |

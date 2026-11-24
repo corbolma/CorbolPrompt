@@ -16,7 +16,7 @@ creates `CorbolPrompt.exe` in the project folder. If the `corbolprompt.ico` icon
 | `Terminal.cs` | VT/xterm emulator: screen, history, colors, escape sequences |
 | `TermView.cs` | terminal drawing, keyboard, selection, copy and paste |
 | `Tabs.cs` | tab bar |
-| `Lisp.cs`, `LispLib.cs`, `LispData.cs` | the Lisp interpreter and its functions (`LispData.cs`: JSON, `ps`, tables) |
+| `Lisp.cs`, `LispLib.cs`, `LispData.cs`, `LispAi.cs` | the Lisp interpreter and its functions (`LispData.cs`: JSON, `ps`, tables; `LispAi.cs`: `ask`, `ai-defun`, `why`) |
 | `LispRepl.cs` | the command line of the Lisp tab |
 | `Assistant.cs` | instructions for the assistant and reading its answers (code blocks → ▶ buttons) |
 | `Ai.cs`, `AiLocal.cs` | assistant services (Claude Code, API, OpenAI-compatible, local) and settings |

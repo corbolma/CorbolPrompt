@@ -71,6 +71,7 @@ namespace CorbolPrompt
             Loop();
             Data();
             PowerShellData();
+            Ai();
             GuideExamples();
             Console.WriteLine(fail == 0 ? "TUTTI OK (" + total + " controlli)" : fail + " FALLITI su " + total);
             return fail == 0 ? 0 : 1;
@@ -350,6 +351,91 @@ namespace CorbolPrompt
             CheckValue("AutoTable di strutture", it.AutoTable(it.EvalString("(list (make-pt :x 1 :y 2))")), "\x1b[1mx  y\x1b[0m\n\x1b[2m─  ─\x1b[0m\n1  2\n");
             string many = (string)it.AutoTable(it.EvalString("(loop for i from 1 to 40 collect (list :n i))"));
             CheckValue("AutoTable di 40 righe", many.EndsWith("\n30\n\x1b[2m(showing 30 of 40 rows, all of them: (table *1))\x1b[0m\n"), true);
+        }
+
+        // ---------------------------------------------------------------------------
+        // IA con un modello finto: risposte preparate in coda, richieste registrate
+        static readonly System.Collections.Generic.Queue<string> replies = new System.Collections.Generic.Queue<string>();
+        static readonly System.Collections.Generic.List<AiRequest> requests = new System.Collections.Generic.List<AiRequest>();
+
+        static void Model(params string[] r) { replies.Clear(); requests.Clear(); foreach (var x in r) replies.Enqueue(x); }
+        static string LastUser() { var m = requests[requests.Count - 1].Messages; return m[m.Count - 1].Text; }
+
+        static void Ai()
+        {
+            Section("IA (modello finto)");
+            it.AiHook = req => { requests.Add(req); return replies.Count > 0 ? replies.Dequeue() : "nessuna risposta preparata"; };
+
+            // ask
+            Model("  Roma \n");
+            Check("(ask \"Capitale d'Italia?\")", "\"Roma\"");
+            CheckValue("ask: la domanda arriva al modello", LastUser(), "Capitale d'Italia?");
+            Model("due");
+            Check("(ask \"Quante righe?\" '((:a 1) (:a 2)))", "\"due\"");
+            CheckValue("ask: il dato arriva in JSON", LastUser(), "Quante righe?\n\nData:\n[{\"a\":1},{\"a\":2}]");
+
+            // ask-data
+            Model("```json\n[{\"Nome\":\"Roma\",\"Abitanti\":2800000},{\"Nome\":\"Milano\",\"Abitanti\":1400000}]\n```");
+            Check("(ask-data \"Due città\" :fields '(:nome :abitanti))", "((:nome \"Roma\" :abitanti 2800000) (:nome \"Milano\" :abitanti 1400000))");
+            CheckValue("ask-data: i campi sono nelle istruzioni", requests[0].System.Contains("exactly these keys: nome, abitanti"), true);
+            Model("Ecco: {\"citta\": [{\"nome\": \"Roma\"}]}");
+            Check("(ask-data \"Una città\" :fields '(:nome))", "((:nome \"Roma\"))");
+            Model("{\"nome\": \"Roma\"}");
+            Check("(ask-data \"Una città\" :fields '(:nome))", "((:nome \"Roma\"))");
+            Model("{\"totale\": 3}");
+            Check("(ask-data \"Il totale\")", "(:totale 3)");
+            Model("non è json", "[1, 2]");
+            Check("(ask-data \"Due numeri\")", "(1 2)");
+            CheckValue("ask-data: riprova dopo un JSON sbagliato", requests[0].Messages.Count, 3);
+            Model("no", "ancora no");
+            Check("(ask-data \"Due numeri\")", "ERRORE: ask-data: la risposta non è JSON valido (JSON non valido (carattere inatteso 'a', al carattere 1)): ancora no");
+
+            // ai-defun: il primo tentativo sbaglia, il secondo va
+            Model("```lisp\n(defun somma (a b) (* a b))\n```", "Corretta:\n```lisp\n(defun somma (a b)\n  (+ a b))\n```");
+            Check("(ai-defun somma (a b) \"somma due numeri\" :examples ((somma 2 3) 5 (somma 10 1) 11))", "somma");
+            Check("(somma 20 22)", "42");
+            CheckValue("ai-defun: due richieste", requests.Count, 2);
+            CheckValue("ai-defun: l'errore torna al modello", LastUser().StartsWith("(somma 2 3) returns 6, but it should return 5."), true);
+            CheckValue("ai-defun: la richiesta contiene gli esempi", requests[0].Messages[0].Text, "Write (defun somma (a b) ...) that does this: somma due numeri\nExamples (call => expected result):\n(somma 2 3) => 5\n(somma 10 1) => 11\n");
+            CheckValue("ai-defun: istruzioni con il dialetto", requests[0].System.StartsWith("CORBOLPROMPT LISP"), true);
+            Check("(ai-source 'somma)", "\"(defun somma (a b)\n  (+ a b))\n\"");
+            Check("(ai-source 'mai-vista)", "nil");
+
+            // risultati attesi valutati, liste confrontate con equal, numeri con =
+            Model("```lisp\n(defun pari (l) (remove-if-not #'evenp l))\n```");
+            Check("(ai-defun pari (l) \"i numeri pari\" :examples ((pari '(1 2 3 4)) '(2 4)))", "pari");
+            Model("```lisp\n(defun meta (x) (/ x 2.0))\n```");
+            Check("(ai-defun meta (x) \"la metà\" :examples ((meta 4) 2))", "meta");
+
+            // tre tentativi sbagliati: errore, e la definizione di prima resta
+            Run("(defun vecchia () 'prima)");
+            Model("(defun vecchia () 1)", "(defun altra () 2)", "(defun vecchia (");
+            Check("(ai-defun vecchia () \"restituisce 2\" :examples ((vecchia) 2))", "ERRORE: ai-defun: dopo 3 tentativi la funzione non va: The code is incomplete: the parentheses are not balanced.");
+            Check("(vecchia)", "prima");
+            CheckValue("ai-defun: nome sbagliato segnalato", requests[0].Messages[4].Text.StartsWith("The block must contain exactly one form, (defun vecchia ...)"), true);
+            Model("(defun nuova () (car 5))", "(defun nuova () (car 5))", "(defun nuova () (car 5))");
+            Check("(ai-defun nuova () \"x\" :examples ((nuova) 1))", "ERRORE: ai-defun: dopo 3 tentativi la funzione non va: (nuova) signals an error: non è un cons: 5");
+            Check("(fboundp 'nuova)", "nil");
+            Model("(defun due-forme () 1) (print 2)");
+            Check("(ai-defun due-forme () \"x\")", "ERRORE: ai-defun: dopo 3 tentativi la funzione non va: The block must contain exactly one form, (defun due-forme ...), and nothing else.");
+
+            // con funzioni di sistema la definisce ma non la prova: sh non deve partire
+            Model("```lisp\n(defun pulisci () (sh \"echo NON-DEVE-PARTIRE\"))\n```");
+            term.Clear();
+            Check("(ai-defun pulisci () \"pulisce\" :examples ((pulisci) 0))", "pulisci");
+            CheckValue("ai-defun: sh non eseguito", term.ToString().Contains("NON-DEVE-PARTIRE\n"), false);
+            CheckValue("ai-defun: avviso per le funzioni di sistema", term.ToString().Contains("it uses sh: not tried on the examples"), true);
+            Check("(ai-defun x () \"d\" :examples (a))", "ERRORE: ai-defun: gli esempi vanno a coppie: (chiamata risultato-atteso ...)");
+
+            // why
+            it.LastError = null;
+            CheckOutput("(why)", "No error to explain.\n");
+            it.LastErrorSource = "(car 5)"; it.LastError = "non è un cons: 5";
+            Model("car vuole una lista.\n```lisp\n(car '(5))\n```");
+            CheckOutput("(why)", "car vuole una lista.\n```lisp\n(car '(5))\n```\n");
+            CheckValue("why: codice ed errore arrivano al modello", LastUser(), "Code:\n(car 5)\n\nError: non è un cons: 5");
+            CheckValue("why: lingua dell'app", requests[0].System.EndsWith("reply in English."), true);
+            it.AiHook = null;
         }
 
         static void CheckValue(string what, object got, object expected)

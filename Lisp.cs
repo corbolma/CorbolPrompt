@@ -731,6 +731,7 @@ namespace CorbolPrompt
             Builtins();
             MoreBuiltins();
             DataBuiltins();
+            AiBuiltins();
             Shell();
             Prelude();
         }
