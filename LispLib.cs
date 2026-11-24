@@ -1047,7 +1047,7 @@ namespace CorbolPrompt
             return s != null ? s.Exe : "powershell.exe";
         }
 
-        int RunProcess(string exe, string args, bool show, StringBuilder capture)
+        int RunProcess(string exe, string args, bool show, StringBuilder capture, StringBuilder errCapture = null)
         {
             var psi = new ProcessStartInfo(exe, args)
             {
@@ -1073,7 +1073,8 @@ namespace CorbolPrompt
                     }
                 };
                 p.OutputDataReceived += h;
-                p.ErrorDataReceived += h;
+                if (errCapture == null) p.ErrorDataReceived += h;
+                else p.ErrorDataReceived += (s, e) => { if (e.Data != null) lock (gate) errCapture.Append(e.Data).Append('\n'); };
                 p.Start();
                 p.StandardInput.Close();
                 p.BeginOutputReadLine();

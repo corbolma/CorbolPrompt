@@ -69,6 +69,8 @@ namespace CorbolPrompt
             Places();
             Streams();
             Loop();
+            Data();
+            PowerShellData();
             GuideExamples();
             Console.WriteLine(fail == 0 ? "TUTTI OK (" + total + " controlli)" : fail + " FALLITI su " + total);
             return fail == 0 ? 0 : 1;
@@ -244,6 +246,108 @@ namespace CorbolPrompt
             Check("(let ((h (make-hash-table))) (setf (gethash nil h) 1) (loop for k being the hash-keys of h collect k))", "(nil)");
             Check("(handler-case (loop for i from 1 do (when (= i 2) (loop-finish))) (error () 'preso))", "nil");
             Check("(loop for x in '(1 2 3) for y = (* x x) collect y)", "(1 4 9)");
+        }
+
+        // ---------------------------------------------------------------------------
+        static void Data()
+        {
+            Section("dati e JSON");
+            // lettura del JSON: chiavi in kebab-case, array come liste
+            Check("(json-parse \"{\\\"ProcessName\\\":\\\"x\\\",\\\"WorkingSet64\\\":123,\\\"WS(M)\\\":1.5,\\\"user_name\\\":\\\"\\\\u00e8\\\"}\")",
+                "(:process-name \"x\" :working-set64 123 :ws-m 1.5 :user-name \"è\")");
+            Check("(json-parse \"[1, -2.5e1, true, false, null, \\\"a\\\\nb\\\", [], {}]\")", "(1 -25.0 t nil nil \"a\nb\" nil nil)");
+            Check("(json-parse \"123456789012345678901234567890\")", "123456789012345678901234567890");
+            Check("(json-parse \"{\\\"PSComputerName\\\":1,\\\"CPU\\\":2,\\\"id\\\":3}\")", "(:ps-computer-name 1 :cpu 2 :id 3)");
+            Check("(json-parse \"\\\"/Date(0)/\\\"\")", Printer.Print(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).ToLocalTime().ToString("yyyy-MM-ddTHH:mm:ss"), true));
+            Check("(json-parse \"[1, 2\")", "ERRORE: JSON non valido (manca ',' o ']', al carattere 6)");
+            Check("(json-parse \"{\\\"a\\\":1} x\")", "ERRORE: JSON non valido (testo in più dopo la fine, al carattere 9)");
+            // scrittura
+            Check("(json-encode '(:name \"a\" :list (1 2.5 \"x\") :ok t :no :false :niente nil :sub (:x 1)))",
+                "\"{\\\"name\\\":\\\"a\\\",\\\"list\\\":[1,2.5,\\\"x\\\"],\\\"ok\\\":true,\\\"no\\\":false,\\\"niente\\\":null,\\\"sub\\\":{\\\"x\\\":1}}\"");
+            Check("(json-encode \"a\\\"b\\nc\")", "\"\\\"a\\\\\\\"b\\\\nc\\\"\"");
+            Check("(json-encode (vector 1 'sym :kw))", "\"[1,\\\"sym\\\",\\\"kw\\\"]\"");
+            Check("(json-encode '((:a 1) (:a 2)) :pretty t)", "\"[\n  {\n    \\\"a\\\": 1\n  },\n  {\n    \\\"a\\\": 2\n  }\n]\"");
+            Check("(let ((h (make-hash-table))) (setf (gethash :x h) 1) (json-encode h))", "\"{\\\"x\\\":1}\"");
+            Check("(defstruct pt x y) (json-encode (make-pt :x 1 :y 2))", "\"{\\\"x\\\":1,\\\"y\\\":2}\"");
+            Check("(json-parse (json-encode '((:a 1 :b (2 3)) (:a \"z\"))))", "((:a 1 :b (2 3)) (:a \"z\"))");
+
+            // keyword come funzioni
+            Check("(:name '(:name \"pippo\" :id 3))", "\"pippo\"");
+            Check("(:manca '(:name \"pippo\") 'predefinito)", "predefinito");
+            Check("(mapcar :id '((:id 1) (:id 2)))", "(1 2)");
+            Check("(let ((h (make-hash-table))) (setf (gethash :k h) 9) (:k h))", "9");
+            Check("(:y (make-pt :x 1 :y 2))", "2");
+            Check("(:a 5)", "ERRORE: :a: 5 non è una plist, una tabella hash o una struttura");
+            Check("(sort (list '(:n 2) '(:n 1)) #'< :key :n)", "((:n 1) (:n 2))");
+
+            // sintassi {…} e #fn(…)
+            Check("{:a 1 :b (+ 1 1)}", "(:a 1 :b 2)");
+            Check("{}", "nil");
+            Check("(:b {:a 1 :b 2})", "2");
+            Check("(funcall #fn(+ % 1) 41)", "42");
+            Check("(funcall #fn(list %1 %2 %&) 1 2 3 4)", "(1 2 (3 4))");
+            Check("(funcall #fn(list % %2) 1 2)", "(1 2)");
+            Check("(funcall #fn(+ 1 2))", "3");
+            Check("(mapcar #fn(* % %) '(1 2 3))", "(1 4 9)");
+            Check("(list #f #t)", "(nil t)");
+            Check("'(a}", "ERRORE: parentesi chiusa di troppo");
+
+            // -> e ->>
+            Check("(-> 5 (- 1) (* 10))", "40");
+            Check("(->> 5 (- 1) (* 10))", "-40");
+            Check("(-> '(:a (:b 7)) :a :b)", "7");
+            Check("(->> '(5 3 8 1) (filter #'oddp) (mapcar #fn(* % 10)))", "(50 30 10)");
+            Check("(macroexpand-1 '(->> x (f a) g))", "(g (f a x))");
+
+            // funzioni sulle righe
+            Run("(defparameter *r* '((:name \"b\" :cpu 10) (:name \"a\" :cpu 30) (:name \"c\" :cpu 20) (:name \"a\" :cpu 5)))");
+            Check("(mapcar :cpu (sort-by :cpu *r*))", "(5 10 20 30)");
+            Check("(mapcar :cpu (sort-by :cpu *r* :desc t))", "(30 20 10 5)");
+            Check("(mapcar :cpu (sort-by :cpu :desc t *r*))", "(30 20 10 5)");
+            Check("(mapcar :name (sort-by :name *r*))", "(\"a\" \"a\" \"b\" \"c\")");
+            Check("(sort-by #'identity '(3 nil \"B\" 1 \"a\"))", "(nil 1 3 \"a\" \"B\")");
+            Check("(mapcar :cpu *r*)", "(10 30 20 5)");   // sort-by non modifica i dati
+            Check("(take 2 '(1 2 3))", "(1 2)");
+            Check("(take 9 '(1 2))", "(1 2)");
+            Check("(drop 2 '(1 2 3))", "(3)");
+            Check("(take 2 \"ciao\")", "\"ci\"");
+            Check("(count-by :name *r*)", "((\"a\" . 2) (\"b\" . 1) (\"c\" . 1))");
+            Check("(mapcar #fn(cons (car %) (length (cdr %))) (group-by :name *r*))", "((\"b\" . 1) (\"a\" . 2) (\"c\" . 1))");
+            Check("(sum-by :cpu *r*)", "65");
+            Check("(sum-by :manca *r*)", "0");
+            Check("(select :name *r*)", "((:name \"b\") (:name \"a\") (:name \"c\") (:name \"a\"))");
+            Check("(select :cpu :name '(:name \"x\" :cpu 1 :altro 2))", "(:cpu 1 :name \"x\")");
+            Check("(select \"name\" *r*)", "ERRORE: select: i campi vanno indicati come keyword (:nome), non \"name\"");
+            Check("(plist-keys '(:a 1 :b 2))", "(:a :b)");
+            Check("(list (plistp '(:a 1)) (plistp '(:a)) (plistp '(1 2)) (plistp nil))", "(t nil nil nil)");
+            Check("(->> *r* (filter #fn(> (:cpu %) 8)) (sort-by :cpu :desc t) (take 2) (mapcar :name))", "(\"a\" \"c\")");
+
+            // tabella
+            CheckOutput("(table '((:name \"b\" :cpu 10) (:name \"aaa\" :cpu 5)))",
+                "\x1b[1mname  cpu\x1b[0m\n\x1b[2m────  ───\x1b[0m\nb      10\naaa     5\n\x1b[2m(2 righe)\x1b[0m\n");
+            CheckOutput("(table :cpu '((:name \"b\" :cpu 10)))", "\x1b[1mcpu\x1b[0m\n\x1b[2m───\x1b[0m\n 10\n");
+            CheckOutput("(table '((1 \"x\") (22 \"yy\")))", " 1  x\n22  yy\n\x1b[2m(2 righe)\x1b[0m\n");
+            CheckOutput("(table '((:d \"2026-11-24T09:04:21.757+01:00\" :v nil)))", "\x1b[1md                 v\x1b[0m\n\x1b[2m────────────────  ─\x1b[0m\n2026-11-24 09:04\n");
+            CheckOutput("(table nil)", "\x1b[2m(nessuna riga)\x1b[0m\n");
+        }
+
+        // ---------------------------------------------------------------------------
+        // Usa PowerShell davvero (c'è su ogni Windows): solo comandi veloci e con risultato fisso.
+        static void PowerShellData()
+        {
+            Section("ps (PowerShell come dati)");
+            Check("(ps \"[pscustomobject]@{Nome='x'; Valore=1; Lista=@(1,2)}\")", "((:nome \"x\" :valore 1 :lista (1 2)))");
+            Check("(ps \"1, 2, 3\")", "(1 2 3)");
+            Check("(ps \"'è'\")", "(\"è\")");
+            Check("(ps \"$null\")", "nil");
+            Check("(ps \"@{a=1}\")", "((:a 1))");
+            Check("(ps \"[System.DayOfWeek]::Monday | ForEach-Object { [pscustomobject]@{Giorno=$_} }\")", "((:giorno \"Monday\"))");
+            Check("(->> (ps \"1..5 | ForEach-Object { [pscustomobject]@{N=$_; Pari=($_ % 2 -eq 0)} }\") (filter :pari) (mapcar :n))", "(2 4)");
+            Check("(:name (car (ps \"Get-Item $env:WINDIR\")))", "\"Windows\"");
+            Check("(ps \"throw 'fallito apposta'\")", "ERRORE: ps: fallito apposta");
+            // il messaggio di PowerShell cambia con la lingua di Windows: lo si chiede a PowerShell stesso
+            object missing = it.EvalString("(:m (car (ps \"try { Get-Item C:/non/esiste/proprio } catch { [pscustomobject]@{M=$_.Exception.Message} }\")))");
+            Check("(ps \"Get-Item C:/non/esiste/proprio\")", "ERRORE: ps: " + missing);
         }
 
         // ---------------------------------------------------------------------------

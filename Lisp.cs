@@ -215,7 +215,8 @@ namespace CorbolPrompt
             {
                 case '(': pos++; return ReadList(')');
                 case '[': pos++; return ReadList(']');
-                case ')': case ']': pos++; throw new LispError("parentesi chiusa di troppo");
+                case '{': pos++; return ReadBraces();
+                case ')': case ']': case '}': pos++; throw new LispError("parentesi chiusa di troppo");
                 case '\'': pos++; return List(it.Intern("quote"), ReadForm());
                 case '`': pos++; return List(it.Intern("quasiquote"), ReadForm());
                 case ',':
@@ -255,6 +256,53 @@ namespace CorbolPrompt
             object r = tail;
             for (int i = items.Count - 1; i >= 0; i--) r = new Cons(items[i], r);
             return r;
+        }
+
+        // {:a 1 :b (+ 1 1)} si legge come (list :a 1 :b (+ 1 1)): una plist
+        object ReadBraces()
+        {
+            var items = new List<object> { it.Intern("list") };
+            while (true)
+            {
+                SkipSpace();
+                if (pos >= s.Length) throw new LispIncomplete();
+                if (s[pos] == '}') { pos++; break; }
+                items.Add(ReadForm());
+            }
+            return Interp.ToList(items, null);
+        }
+
+        // #fn(+ % 1) è (lambda (%) (+ % 1)); con %1 %2 ... più argomenti, %& il resto
+        object ReadShortLambda()
+        {
+            var body = ReadList(')');
+            int max = 0; bool plain = false, rest = false;
+            Action<object> scan = null;
+            scan = x =>
+            {
+                var c = x as Cons;
+                if (c != null) { scan(c.Car); scan(c.Cdr); return; }
+                var sym = x as Sym;
+                if (sym == null || sym.Name.Length == 0 || sym.Name[0] != '%') return;
+                if (sym.Name == "%") plain = true;
+                else if (sym.Name == "%&") rest = true;
+                else { int n; if (int.TryParse(sym.Name.Substring(1), out n) && n > 0 && n < 21) max = Math.Max(max, n); }
+            };
+            scan(body);
+            var pars = new List<object>();
+            object form = body;
+            if (max == 0 && plain) pars.Add(it.Intern("%"));
+            else
+            {
+                for (int i = 1; i <= max; i++) pars.Add(it.Intern("%" + i));
+                if (plain)
+                {
+                    if (max == 0) pars.Add(it.Intern("%1"));
+                    form = List(it.Intern("let"), List(List(it.Intern("%"), it.Intern("%1"))), body);
+                }
+            }
+            if (rest) { pars.Add(it.Intern("&rest")); pars.Add(it.Intern("%&")); }
+            return List(it.Intern("lambda"), Interp.ToList(pars, null), form);
         }
 
         string ReadString()
@@ -318,6 +366,7 @@ namespace CorbolPrompt
                 }
                 catch { throw new LispError("numero non valido: #" + c + tok); }
             }
+            if (c == 'f' && pos + 3 < s.Length && s[pos + 2] == 'n' && s[pos + 3] == '(') { pos += 4; return ReadShortLambda(); }
             if (c == 't' || c == 'f')
             {
                 pos += 2;
@@ -326,7 +375,7 @@ namespace CorbolPrompt
             throw new LispError("sintassi # non supportata: #" + c);
         }
 
-        static bool IsDelimiter(char c) { return char.IsWhiteSpace(c) || "()[]\"';`,".IndexOf(c) >= 0; }
+        static bool IsDelimiter(char c) { return char.IsWhiteSpace(c) || "()[]{}\"';`,".IndexOf(c) >= 0; }
 
         string Token()
         {
@@ -681,6 +730,7 @@ namespace CorbolPrompt
             Cwd = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
             Builtins();
             MoreBuiltins();
+            DataBuiltins();
             Shell();
             Prelude();
         }
@@ -851,6 +901,8 @@ namespace CorbolPrompt
             object v;
             if (env.TryGet(s, out v) && v is LispFn) return (LispFn)v;
             if (s.Value is LispFn) return (LispFn)s.Value;
+            // (:name riga) legge il campo :name di una plist, tabella hash o struttura
+            if (s.IsKeyword) return KeywordFn(s);
             return null;
         }
 

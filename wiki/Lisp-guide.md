@@ -186,10 +186,56 @@ Example: the 5 largest files in the folder, in KB:
         do (format t "~8d KB  ~a~%" (floor (file-size f) 1024) f)))
 ```
 
+## Data from the shell
+`(ps "...")` runs a PowerShell command and returns the result **as data**: a list of plists, one per object, with field names in lowercase and dashed (`WorkingSet64` → `:working-set64`, `WS(M)` → `:ws-m`).
+```lisp
+λ> (take 2 (ps "Get-Service"))
+((:status "Stopped" :name "AarSvc" :display-name "Agent Activation Runtime")
+ (:status "Running" :name "Appinfo" :display-name "Application Information"))
+λ> (->> (ps "Get-Process") (sort-by :ws-m :desc t) (take 3) (table))
+npm-k     pm-m     ws-m   cpu-s     id  si  process-name
+─────  ───────  ───────  ──────  ─────  ──  ──────────────────
+  237  1741.14  1773.14  311.84   4524   1  VBCSCompiler
+  397  1797.93  1637.74  499.02  13700   1  devenv
+    0     2.62  1042.31     0.0   7868   0  Memory Compression
+(3 righe)
+```
+Without `Select-Object`, `ps` takes the columns PowerShell would show in the console (reading every property of objects like processes can take a minute). With `Select-Object` you choose, and the names are the same in PowerShell 5.1 and 7: the safer choice in scripts. `(ps "..." :all t)` takes every property (slow); `:depth n` sets how deep to go into nested objects (2).
+Enums become text (`"Running"`), dates ISO text (`"2026-11-24T09:04:21+01:00"`). A PowerShell error becomes a Lisp error that `handler-case` can catch.
+
+| | |
+|---|---|
+| `(:name row)` | a keyword used as a function reads that field (plist, hash table or structure); `(:name row "default")`; also `(mapcar :name rows)` and `:key :name` |
+| `{:a 1 :b (+ 1 1)}` | a plist; it reads as `(list :a 1 :b (+ 1 1))`, so the values are evaluated |
+| `#fn(> (:cpu %) 10)` | short function: `%` is the argument; `%1 %2` for more arguments, `%&` for the rest |
+| `(-> x (f a) g)`, `(->> x (f a) g)` | chain steps: `->` passes the value as the first argument (`(g (f x a))`), `->>` as the last (`(g (f a x))`) |
+| `(filter pred rows)` | the rows for which `pred` is true; with a keyword, those where the field is not nil |
+| `(sort-by :field rows)`, `(sort-by :field :desc t rows)` | sort (the original is not changed): nil, then numbers, then text ignoring case |
+| `(take n rows)`, `(drop n rows)` | the first n, all but the first n |
+| `(select :name :id rows)` | keeps only those fields (also on a single plist) |
+| `(count-by :field rows)` | how many rows for each value, most frequent first: `(("Stopped" . 177) ("Running" . 152))` |
+| `(group-by :field rows)` | rows grouped by value: `((value row row...) ...)` |
+| `(sum-by :field rows)` | the sum of the field (nils are skipped) |
+| `(table rows)`, `(table :name :id rows)` | prints an aligned table; works with lists of lists too |
+| `(json-parse text)`, `(read-json file)` | from JSON: objects → plists, arrays → lists, `true` → t, `false`/`null` → nil |
+| `(json-encode data)`, `(json-encode data :pretty t)` | to JSON: plists, hash tables and structures → objects, lists and vectors → arrays; `:false` writes `false` |
+
+In all these functions the data comes last, so they chain with `->>`:
+```lisp
+(->> (ps "Get-ChildItem -File")
+     (filter #fn(> (:length %) 1000000))
+     (sort-by :length :desc t)
+     (table :name :length :last-write-time))
+(->> (ps "Get-Service") (count-by :status))
+(json-encode (ps "Get-Process | Select-Object -First 3 Name, Id") :pretty t)
+```
+Note: since keys become lowercase, `json-encode` does not bring back the original capitals (`:process-name` → `"process-name"`).
+
 ## init.lisp
 If you create `%APPDATA%\CorbolPrompt\init.lisp`, it is loaded when each Lisp tab opens: the place for your everyday functions and macros.
 
 ## Differences from Common Lisp
 Not available: CLOS (`defclass`, `defmethod`), packages, the condition system with restarts, multiple values (`values` returns the first one; `multiple-value-bind` binds only the first), ratios and complex numbers, reader macros, `tagbody`/`go`.
+Added on top of Common Lisp: data from the shell (`ps`, `->>`, `{…}`, `#fn(…)`, keywords as functions, JSON), `#t`/`#f`, and `[ ]` as a synonym of `( )`.
 
 The assistant knows exactly this dialect: ask it to write or explain Lisp code; the blocks it suggests run with a click in the Lisp tab.

@@ -186,10 +186,56 @@ Esempio: i 5 file più grandi della cartella, in KB:
         do (format t "~8d KB  ~a~%" (floor (file-size f) 1024) f)))
 ```
 
+## Dati dalla shell
+`(ps "...")` esegue un comando PowerShell e restituisce il risultato **come dati**: una lista di plist, una per oggetto, con i campi in minuscolo e col trattino (`WorkingSet64` → `:working-set64`, `WS(M)` → `:ws-m`).
+```lisp
+λ> (take 2 (ps "Get-Service"))
+((:status "Stopped" :name "AarSvc" :display-name "Agent Activation Runtime")
+ (:status "Running" :name "Appinfo" :display-name "Informazioni applicazioni"))
+λ> (->> (ps "Get-Process") (sort-by :ws-m :desc t) (take 3) (table))
+npm-k     pm-m     ws-m   cpu-s     id  si  process-name
+─────  ───────  ───────  ──────  ─────  ──  ──────────────────
+  237  1741.14  1773.14  311.84   4524   1  VBCSCompiler
+  397  1797.93  1637.74  499.02  13700   1  devenv
+    0     2.62  1042.31     0.0   7868   0  Memory Compression
+(3 righe)
+```
+Senza `Select-Object`, `ps` prende le colonne che PowerShell mostrerebbe in console (leggere tutte le proprietà di oggetti come i processi richiede anche un minuto). Con `Select-Object` decidi tu, e i nomi non cambiano tra PowerShell 5.1 e 7: negli script è la scelta più sicura. `(ps "..." :all t)` prende tutte le proprietà (lento); `:depth n` decide quanto scendere negli oggetti annidati (2).
+Gli enum diventano testo (`"Running"`), le date testo ISO (`"2026-11-24T09:04:21+01:00"`). Un errore di PowerShell diventa un errore Lisp, che `handler-case` può prendere.
+
+| | |
+|---|---|
+| `(:name riga)` | una keyword usata come funzione legge quel campo (plist, tabella hash o struttura); `(:name riga "predefinito")`; vale anche `(mapcar :name righe)` e `:key :name` |
+| `{:a 1 :b (+ 1 1)}` | una plist; si legge come `(list :a 1 :b (+ 1 1))`, quindi i valori vengono calcolati |
+| `#fn(> (:cpu %) 10)` | funzione breve: `%` è l'argomento; `%1 %2` per più argomenti, `%&` per il resto |
+| `(-> x (f a) g)`, `(->> x (f a) g)` | concatenano i passi: `->` mette il valore come primo argomento (`(g (f x a))`), `->>` come ultimo (`(g (f a x))`) |
+| `(filter pred righe)` | le righe per cui `pred` è vero; con una keyword, quelle in cui il campo non è nil |
+| `(sort-by :campo righe)`, `(sort-by :campo :desc t righe)` | ordina (senza modificare l'originale): nil, poi numeri, poi testo senza badare alle maiuscole |
+| `(take n righe)`, `(drop n righe)` | le prime n, tutte tranne le prime n |
+| `(select :name :id righe)` | tiene solo quei campi (anche su una sola plist) |
+| `(count-by :campo righe)` | quante righe per ogni valore, dal più frequente: `(("Stopped" . 177) ("Running" . 152))` |
+| `(group-by :campo righe)` | le righe raggruppate per valore: `((valore riga riga...) ...)` |
+| `(sum-by :campo righe)` | la somma del campo (i nil non contano) |
+| `(table righe)`, `(table :name :id righe)` | stampa una tabella allineata; funziona anche con liste di liste |
+| `(json-parse testo)`, `(read-json file)` | dal JSON: oggetti → plist, array → liste, `true` → t, `false`/`null` → nil |
+| `(json-encode dato)`, `(json-encode dato :pretty t)` | al JSON: plist, tabelle hash e strutture → oggetti, liste e vettori → array; `:false` scrive `false` |
+
+In tutte queste funzioni il dato va per ultimo, così si concatenano con `->>`:
+```lisp
+(->> (ps "Get-ChildItem -File")
+     (filter #fn(> (:length %) 1000000))
+     (sort-by :length :desc t)
+     (table :name :length :last-write-time))
+(->> (ps "Get-Service") (count-by :status))
+(json-encode (ps "Get-Process | Select-Object -First 3 Name, Id") :pretty t)
+```
+Nota: dato che le chiavi diventano minuscole, `json-encode` non ricrea le maiuscole originali (`:process-name` → `"process-name"`).
+
 ## init.lisp
 Se crei `%APPDATA%\CorbolPrompt\init.lisp`, viene caricato all'apertura di ogni scheda Lisp: è il posto per le tue funzioni e macro di tutti i giorni.
 
 ## Differenze da Common Lisp
 Non ci sono: CLOS (`defclass`, `defmethod`), package, il sistema di condizioni con i restart, valori multipli (`values` restituisce il primo; `multiple-value-bind` lega solo il primo), frazioni e numeri complessi, reader macro, `tagbody`/`go`.
+In più rispetto a Common Lisp: i dati dalla shell (`ps`, `->>`, `{…}`, `#fn(…)`, le keyword come funzioni, JSON), `#t`/`#f`, e `[ ]` come sinonimo di `( )`.
 
 L'assistente conosce esattamente questo dialetto: chiedigli pure di scrivere o spiegare codice Lisp, i blocchi che propone si eseguono con un clic nella scheda Lisp.

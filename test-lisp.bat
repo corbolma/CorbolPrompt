@@ -12,7 +12,7 @@ cd /d "%~dp0"
 "%CSC%" /nologo /codepage:65001 /target:exe /out:tests\LispTests.exe /main:CorbolPrompt.LispTests /nowarn:0162,0168,0169,0219,0414,0649 ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:System.Numerics.dll ^
   /r:System.Web.Extensions.dll /r:System.Security.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
-  CorbolPrompt.cs Tabs.cs Pty.cs Terminal.cs TermView.cs Lisp.cs LispLib.cs LispRepl.cs Assistant.cs Favorites.cs Welcome.cs Ai.cs AiLocal.cs Lang.cs Updater.cs Version.cs ^
+  CorbolPrompt.cs Tabs.cs Pty.cs Terminal.cs TermView.cs Lisp.cs LispLib.cs LispData.cs LispRepl.cs Assistant.cs Favorites.cs Welcome.cs Ai.cs AiLocal.cs Lang.cs Updater.cs Version.cs ^
   tests\LispTests.cs
 if errorlevel 1 (
   echo Compilazione dei test fallita.
