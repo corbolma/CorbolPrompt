@@ -224,6 +224,22 @@ Gli enum diventano testo (`"Running"`), le date testo ISO (`"2026-11-24T09:04:21
 | `(group-by :campo righe)` | le righe raggruppate per valore: `((valore riga riga...) ...)` |
 | `(sum-by :campo righe)` | la somma del campo (i nil non contano) |
 | `(table righe)`, `(table :name :id righe)` | stampa una tabella allineata con tutte le righe; funziona anche con liste di liste |
+| `(bar dati)`, `(bar :name :cpu righe)` | un grafico a barre: i dati possono essere coppie `(etichetta . n)` come quelle di `count-by`, liste `(etichetta n)`, una plist, una tabella hash o una lista di numeri; con le righe si indicano il campo dell'etichetta e quello del valore |
+| `(hist numeri)`, `(hist :cpu righe)`, `:bins n` | un istogramma: quanti valori cadono in ogni fascia; le fasce hanno larghezze tonde (0–20, 20–40…), con `:bins` sono esattamente n |
+| `(sparkline numeri)`, `(sparkline :cpu righe)` | una stringa come `"▁▃▅█▂"`, da mettere anche in `format` |
+
+```lisp
+λ> (bar (count-by :status (ps "Get-Service")))
+Stopped  ██████████████████████████████████████████████████ 175
+Running  ████████████████████████████████████████████ 154
+λ> (hist :working-set64 (ps "Get-Process | Select-Object WorkingSet64"))
+ 0–500M  ██████████████████████████████████████████████████ 300
+500M–1G  ▍ 2
+1G–1.5G  0
+1.5G–2G  ▏ 1
+λ> (format t "andamento: ~a~%" (sparkline '(3 5 9 4 2 8 12 7)))
+andamento: ▂▃▆▂▁▅█▅
+```
 | `(json-parse testo)`, `(read-json file)` | dal JSON: oggetti → plist, array → liste, `true` → t, `false`/`null` → nil |
 | `(json-encode dato)`, `(json-encode dato :pretty t)` | al JSON: plist, tabelle hash e strutture → oggetti, liste e vettori → array; `:false` scrive `false` |
 

@@ -196,6 +196,79 @@ namespace CorbolPrompt
                 return null;
             });
 
+            // ---- grafici di testo ----
+            // (bar dati): coppie (etichetta . n) come quelle di count-by, liste (etichetta n), una plist, una tabella hash
+            // o una lista di numeri; (bar :cpu righe) solo i valori, (bar :name :cpu righe) con le etichette
+            Def("bar", 1, 3, a =>
+            {
+                var items = new List<KeyValuePair<string, object>>();
+                var data = a[a.Length - 1];
+                if (a.Length == 1)
+                {
+                    var h = data as Dictionary<object, object>;
+                    if (h != null) foreach (var kv in h) items.Add(new KeyValuePair<string, object>(Label(kv.Key), kv.Value));
+                    else if (IsPlist(data)) foreach (var p in PlistPairs(data)) items.Add(new KeyValuePair<string, object>(Label(p.Key), p.Value));
+                    else foreach (var x in Seq(data))
+                    {
+                        var c = x as Cons;
+                        if (x == null || Num.Is(x)) items.Add(new KeyValuePair<string, object>(null, x));
+                        else if (IsRecord(x)) throw new LispError("bar: per righe di dati indica i campi, per esempio (bar :name :cpu righe)");
+                        else if (c != null && !(c.Cdr is Cons)) items.Add(new KeyValuePair<string, object>(Label(c.Car), c.Cdr));
+                        else if (c != null && ((Cons)c.Cdr).Cdr == null) items.Add(new KeyValuePair<string, object>(Label(c.Car), ((Cons)c.Cdr).Car));
+                        else throw new LispError("bar: non so disegnare " + Printer.Print(x, true) + "; servono numeri, coppie (etichetta . n) o liste (etichetta n)");
+                    }
+                }
+                else
+                {
+                    var val = FieldFn(a[a.Length - 2]);
+                    var lab = a.Length == 3 ? FieldFn(a[0]) : null;
+                    foreach (var x in Seq(data)) items.Add(new KeyValuePair<string, object>(lab == null ? null : Label(lab(x)), val(x)));
+                }
+                foreach (var kv in items)
+                    if (kv.Value != null && !Num.Is(kv.Value)) throw new LispError("bar: il valore " + Printer.Print(kv.Value, true) + " non è un numero");
+                FreshLine();
+                Write(RenderBars(items, false, TermCols - 1));
+                QuietResult = true;
+                return null;
+            });
+            // (hist numeri), (hist :cpu righe), :bins n: quanti valori cadono in ogni fascia
+            Def("hist", 1, -1, a =>
+            {
+                var args = a.ToList();
+                int bins = 0;
+                for (int i = 0; i < args.Count - 1; i++)
+                    if (args[i] is Sym && ((Sym)args[i]).Name == ":bins") { bins = Num.ToInt(args[i + 1]); args.RemoveRange(i, 2); break; }
+                if (args.Count < 1 || args.Count > 2) throw new LispError("hist: si usa (hist numeri) o (hist :campo righe), con :bins n se vuoi");
+                var values = Seq(args[args.Count - 1]);
+                if (args.Count == 2) { var f = FieldFn(args[0]); values = values.Select(f).ToList(); }
+                foreach (var v in values)
+                    if (v != null && !Num.Is(v)) throw new LispError("hist: il valore " + Printer.Print(v, true) + " non è un numero");
+                FreshLine();
+                Write(RenderBars(HistBins(values.Where(v => v != null).ToList(), bins), true, TermCols - 1));
+                QuietResult = true;
+                return null;
+            });
+            // (sparkline numeri) o (sparkline :cpu righe) → una stringa come "▁▃▅█▂", da usare anche in format
+            Def("sparkline", 1, 2, a =>
+            {
+                var values = Seq(a[a.Length - 1]);
+                if (a.Length == 2) { var f = FieldFn(a[0]); values = values.Select(f).ToList(); }
+                foreach (var v in values)
+                    if (v != null && !Num.Is(v)) throw new LispError("sparkline: il valore " + Printer.Print(v, true) + " non è un numero");
+                var nums = values.Where(v => v != null).Select(Num.Dbl).ToList();
+                if (nums.Count == 0) return new string(' ', values.Count);
+                double lo = nums.Min(), hi = nums.Max();
+                const string ticks = "▁▂▃▄▅▆▇█";
+                var sb = new StringBuilder();
+                foreach (var v in values)
+                {
+                    if (v == null) { sb.Append(' '); continue; }
+                    int i = hi == lo ? 3 : (int)Math.Round((Num.Dbl(v) - lo) / (hi - lo) * 7);
+                    sb.Append(ticks[i]);
+                }
+                return sb.ToString();
+            });
+
             EvalString(@"
 (defmacro -> (x &rest forms)
   (dolist (f forms x)
@@ -500,6 +573,112 @@ $r = @($r | ForEach-Object { if ($null -eq $_) { return }; if (__cpRaw $_) { $c 
             }
             if (notes.Count > 0) sb.Append("\x1b[2m(" + string.Join("; ", notes) + ")\x1b[0m\n");
             return sb.ToString();
+        }
+
+        // ---------- grafici ----------
+
+        static string Label(object v)
+        {
+            var s = v as Sym;
+            if (s != null && s.IsKeyword) return s.Name.Substring(1);
+            return Cell(v, 1000);
+        }
+
+        static string FmtNum(object v)
+        {
+            if (!(v is double)) return Printer.Print(v, false);
+            double d = (double)v;
+            if (d == Math.Floor(d) && Math.Abs(d) < 1e15) return ((long)d).ToString(CultureInfo.InvariantCulture);
+            return d.ToString(Math.Abs(d) >= 1 ? "0.##" : "0.####", CultureInfo.InvariantCulture);
+        }
+
+        // Bordi delle fasce in breve: 12000 → 12k, 2500000 → 2.5M, 1500000000 → 1.5G
+        static string Short(double d)
+        {
+            double a = Math.Abs(d);
+            if (a >= 1e9) return FmtNum(d / 1e9) + "G";
+            if (a >= 1e6) return FmtNum(d / 1e6) + "M";
+            if (a >= 1e4) return FmtNum(d / 1e3) + "k";
+            return FmtNum(d);
+        }
+
+        // Una riga per elemento: etichetta, barra lunga in proporzione al valore più grande, valore.
+        // Le barre usano gli ottavi di carattere (▏▎▍▌▋▊▉█); i valori negativi sono rossi.
+        static string RenderBars(List<KeyValuePair<string, object>> items, bool labelsRight, int maxWidth)
+        {
+            if (items.Count == 0) return "\x1b[2m(" + L.T("nessun dato", "no data") + ")\x1b[0m\n";
+            if (maxWidth <= 0) maxWidth = 80;
+            bool labels = items.Any(kv => !string.IsNullOrEmpty(kv.Key));
+            int labelW = labels ? Math.Min(24, items.Max(kv => (kv.Key ?? "").Length)) : 0;
+            var valText = items.Select(kv => kv.Value == null ? "" : FmtNum(kv.Value)).ToList();
+            int valW = valText.Max(s => s.Length);
+            int barW = Math.Max(10, Math.Min(50, maxWidth - (labels ? labelW + 2 : 0) - valW - 1));
+            double max = items.Where(kv => kv.Value != null).Select(kv => Math.Abs(Num.Dbl(kv.Value))).DefaultIfEmpty(0).Max();
+            const string parts = "▏▎▍▌▋▊▉";
+            var sb = new StringBuilder();
+            for (int i = 0; i < items.Count; i++)
+            {
+                if (labels)
+                {
+                    string l = items[i].Key ?? "";
+                    if (l.Length > labelW) l = l.Substring(0, labelW - 1) + "…";
+                    sb.Append(labelsRight ? l.PadLeft(labelW) : l.PadRight(labelW)).Append("  ");
+                }
+                string bar = "";
+                if (items[i].Value != null && max > 0)
+                {
+                    double v = Num.Dbl(items[i].Value);
+                    int eighths = (int)Math.Round(Math.Abs(v) / max * barW * 8);
+                    if (eighths == 0 && v != 0) eighths = 1;
+                    bar = new string('█', eighths / 8) + (eighths % 8 > 0 ? parts[eighths % 8 - 1].ToString() : "");
+                    if (bar.Length > 0) bar = (v < 0 ? "\x1b[31m" : "\x1b[36m") + bar + "\x1b[0m" + " ";
+                }
+                sb.Append(bar).Append(valText[i]);
+                while (sb.Length > 0 && sb[sb.Length - 1] == ' ') sb.Length--;
+                sb.Append('\n');
+            }
+            return sb.ToString();
+        }
+
+        // Fasce dell'istogramma: con :bins n esattamente n fasce uguali; senza, una larghezza "tonda" (1, 2, 5 × 10^k)
+        // per circa ceil(log2 n) + 1 fasce. Interi con poche cifre diverse: una fascia per valore.
+        static List<KeyValuePair<string, object>> HistBins(List<object> values, int bins)
+        {
+            var r = new List<KeyValuePair<string, object>>();
+            if (values.Count == 0) return r;
+            var nums = values.Select(Num.Dbl).ToList();
+            double lo = nums.Min(), hi = nums.Max();
+            bool ints = values.All(v => !(v is double) || (double)v == Math.Floor((double)v));
+            if (hi == lo) { r.Add(new KeyValuePair<string, object>(FmtNum(lo), (long)nums.Count)); return r; }
+            int target = bins > 0 ? bins : Math.Min(20, (int)Math.Ceiling(Math.Log(nums.Count, 2)) + 1);
+            if (bins <= 0 && ints && hi - lo + 1 <= target)
+            {
+                for (double x = lo; x <= hi; x++)
+                {
+                    double xx = x;
+                    r.Add(new KeyValuePair<string, object>(FmtNum(xx), (long)nums.Count(n => n == xx)));
+                }
+                return r;
+            }
+            double width, start;
+            int count;
+            if (bins > 0) { width = (hi - lo) / bins; start = lo; count = bins; }
+            else
+            {
+                double raw = (hi - lo) / target, mag = Math.Pow(10, Math.Floor(Math.Log10(raw))), f = raw / mag;
+                width = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+                if (ints && width < 1) width = 1;
+                start = Math.Floor(lo / width) * width;
+                count = Math.Max(1, (int)Math.Ceiling((hi - start) / width - 1e-9));
+            }
+            var counts = new long[count];
+            foreach (var n in nums) counts[Math.Min(count - 1, Math.Max(0, (int)Math.Floor((n - start) / width + 1e-9)))]++;
+            for (int i = 0; i < count; i++)
+            {
+                double a = start + i * width, b = start + (i + 1) * width;
+                r.Add(new KeyValuePair<string, object>(Short(Math.Round(a, 10)) + "–" + Short(Math.Round(b, 10)), counts[i]));
+            }
+            return r;
         }
 
         static string Cell(object v, int max)

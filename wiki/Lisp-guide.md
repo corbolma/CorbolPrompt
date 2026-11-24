@@ -224,6 +224,22 @@ Enums become text (`"Running"`), dates ISO text (`"2026-11-24T09:04:21+01:00"`).
 | `(group-by :field rows)` | rows grouped by value: `((value row row...) ...)` |
 | `(sum-by :field rows)` | the sum of the field (nils are skipped) |
 | `(table rows)`, `(table :name :id rows)` | prints an aligned table with every row; works with lists of lists too |
+| `(bar data)`, `(bar :name :cpu rows)` | a bar chart: the data can be `(label . n)` pairs like those from `count-by`, `(label n)` lists, a plist, a hash table or a list of numbers; with rows you name the label field and the value field |
+| `(hist numbers)`, `(hist :cpu rows)`, `:bins n` | a histogram: how many values fall in each range; ranges have round widths (0–20, 20–40…), with `:bins` there are exactly n |
+| `(sparkline numbers)`, `(sparkline :cpu rows)` | a string like `"▁▃▅█▂"`, which can go inside `format` too |
+
+```lisp
+λ> (bar (count-by :status (ps "Get-Service")))
+Stopped  ██████████████████████████████████████████████████ 175
+Running  ████████████████████████████████████████████ 154
+λ> (hist :working-set64 (ps "Get-Process | Select-Object WorkingSet64"))
+ 0–500M  ██████████████████████████████████████████████████ 300
+500M–1G  ▍ 2
+1G–1.5G  0
+1.5G–2G  ▏ 1
+λ> (format t "trend: ~a~%" (sparkline '(3 5 9 4 2 8 12 7)))
+trend: ▂▃▆▂▁▅█▅
+```
 | `(json-parse text)`, `(read-json file)` | from JSON: objects → plists, arrays → lists, `true` → t, `false`/`null` → nil |
 | `(json-encode data)`, `(json-encode data :pretty t)` | to JSON: plists, hash tables and structures → objects, lists and vectors → arrays; `:false` writes `false` |
 

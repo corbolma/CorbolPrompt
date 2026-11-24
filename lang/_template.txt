@@ -142,6 +142,7 @@ no rows =
 showing {0} of {1} rows, all of them: (table *1) = 
 {0} rows = 
 {0} hidden columns: {1} = 
+no data = 
 No error to explain. = 
 it uses {0}: not tried on the examples, check it before using it = 
 tried on {0} examples = 

@@ -351,6 +351,33 @@ namespace CorbolPrompt
             CheckValue("AutoTable di strutture", it.AutoTable(it.EvalString("(list (make-pt :x 1 :y 2))")), "\x1b[1mx  y\x1b[0m\n\x1b[2m─  ─\x1b[0m\n1  2\n");
             string many = (string)it.AutoTable(it.EvalString("(loop for i from 1 to 40 collect (list :n i))"));
             CheckValue("AutoTable di 40 righe", many.EndsWith("\n30\n\x1b[2m(showing 30 of 40 rows, all of them: (table *1))\x1b[0m\n"), true);
+
+            // grafici di testo (TermCols 17: le barre restano corte)
+            Func<int, string, string> bars = (n, part) => "\x1b[36m" + new string('█', n) + part + "\x1b[0m ";
+            it.TermCols = 17;
+            CheckOutput("(bar '((\"a\" . 4) (\"bb\" . 2)))", "a   " + bars(10, "") + "4\nbb  " + bars(5, "") + "2\n");
+            CheckOutput("(bar '(3 1))", bars(14, "") + "3\n" + bars(4, "▋") + "1\n");
+            CheckOutput("(bar '((\"x\" -2) (\"y\" nil)))", "x  \x1b[31m" + new string('█', 10) + "\x1b[0m -2\ny\n");
+            CheckOutput("(bar '(:a 2 :b 1))", "a  " + bars(11, "") + "2\nb  " + bars(5, "▌") + "1\n");
+            CheckOutput("(bar :n :v '((:n \"p\" :v 1) (:n \"q\" :v 0)))", "p  " + bars(11, "") + "1\nq  0\n");
+            CheckOutput("(bar (count-by :s '((:s \"on\") (:s \"off\") (:s \"on\"))))", "on   " + bars(10, "") + "2\noff  " + bars(5, "") + "1\n");
+            Check("(bar '((:a 1)))", "ERRORE: bar: per righe di dati indica i campi, per esempio (bar :name :cpu righe)");
+            Check("(bar '(1 \"x\"))", "ERRORE: bar: non so disegnare \"x\"; servono numeri, coppie (etichetta . n) o liste (etichetta n)");
+            CheckOutput("(bar nil)", "\x1b[2m(no data)\x1b[0m\n");
+            Run("(bar '(1))"); CheckValue("QuietResult dopo bar", it.QuietResult, true);
+            CheckOutput("(hist '(1 2 2 3 3 3))", "1  " + bars(3, "▋") + "1\n2  " + bars(7, "▍") + "2\n3  " + bars(11, "") + "3\n");
+            CheckOutput("(hist :bins 2 '(0 10 5 1))", " 0–5  " + bars(10, "") + "2\n5–10  " + bars(10, "") + "2\n");
+            CheckOutput("(hist '(0 7 15 23 31 40 48 55))", " 0–20  " + bars(10, "") + "3\n20–40  " + bars(6, "▋") + "2\n40–60  " + bars(10, "") + "3\n");
+            CheckOutput("(hist '(0 2500000 3000000))", " 0–1M  " + bars(5, "") + "1\n1M–2M  0\n2M–3M  " + bars(10, "") + "2\n");
+            CheckOutput("(hist :x '((:x 5) (:x 5) (:x nil)))", "5  " + bars(11, "") + "2\n");
+            CheckOutput("(hist nil)", "\x1b[2m(no data)\x1b[0m\n");
+            it.TermCols = 0;
+            Check("(sparkline '(1 2 3 4 5 6 7 8))", "\"▁▂▃▄▅▆▇█\"");
+            Check("(sparkline '(5 5))", "\"▄▄\"");
+            Check("(sparkline '(1 nil 3))", "\"▁ █\"");
+            Check("(sparkline :v '((:v 0) (:v 10)))", "\"▁█\"");
+            Check("(sparkline #(2.5 0.5))", "\"█▁\"");
+            Check("(sparkline '(1 \"x\"))", "ERRORE: sparkline: il valore \"x\" non è un numero");
         }
 
         // ---------------------------------------------------------------------------
