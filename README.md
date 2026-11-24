@@ -36,6 +36,7 @@ La lingua si cambia dal menu ⋯ → Lingua, subito, senza chiudere le schede.
 ## Compilare
 
 `build.bat` usa il compilatore C# incluso in Windows (.NET Framework 4.x): non serve installare niente.
+`test-lisp.bat` compila ed esegue i test del Lisp (`tests\LispTests.cs`, fuori dall'exe): va lanciato dopo ogni modifica al Lisp.
 `make-icon.ps1` rigenera l'icona; `lang-check.ps1` aggiorna `lang\_template.txt` per le traduzioni.
 
 Serve Windows 10 1809 o successivo (console virtuale ConPTY).
