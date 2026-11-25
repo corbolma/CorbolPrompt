@@ -74,7 +74,7 @@ Prima di premere ▶ **leggi il comando**: l'assistente avverte quando un comand
 Il segno rosso e **✦ Spiega l'errore** ci sono in PowerShell e nel Lisp; nelle altre shell usa *Spiega lo schermo*.
 
 ## I comandi dell'IA nel Lisp
-*Nelle versioni successive alla 0.3.1.* Si scrivono in una scheda **Lisp** (freccia **⌄** accanto al +). **Ctrl+C** interrompe l'attesa.
+*Dalla versione 0.4.0.* Si scrivono in una scheda **Lisp** (freccia **⌄** accanto al +). **Ctrl+C** interrompe l'attesa.
 
 | Comando | Cosa fa |
 |---|---|

@@ -74,7 +74,7 @@ Buttons marked **[Lisp]** open a Lisp tab if there isn't one. When **Type in all
 The red mark and **✦ Explain the error** are available in PowerShell and Lisp; in the other shells use *Explain the screen*.
 
 ## AI commands in Lisp
-*In versions after 0.3.1.* Type them in a **Lisp** tab (the **⌄** arrow next to the +). **Ctrl+C** stops the wait.
+*Since version 0.4.0.* Type them in a **Lisp** tab (the **⌄** arrow next to the +). **Ctrl+C** stops the wait.
 
 | Command | What it does |
 |---|---|
