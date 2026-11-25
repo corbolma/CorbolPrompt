@@ -48,7 +48,8 @@ namespace CorbolPrompt
 
             Def("ask-data", 1, -1, a =>
             {
-                var fields = KeyArg(a, 1, ":fields", null);
+                bool hasData = a.Length > 1 && !(a[1] is Sym && ((Sym)a[1]).IsKeyword);
+                var fields = KeyArg(a, hasData ? 2 : 1, ":fields", null);   // il dato, se c'è, sta prima di :fields
                 var keys = fields == null ? new List<string>() : ListItems(fields).Select(f => f is Sym ? ((Sym)f).Name.TrimStart(':') : Str(f)).ToList();
                 var sys = new StringBuilder("You are called from a CorbolPrompt Lisp program; your reply is parsed as JSON. Reply with JSON only: no prose, no markdown, no code fences.");
                 if (keys.Count > 0) sys.Append(" Reply with a JSON array of objects, each with exactly these keys: " + string.Join(", ", keys) + ". Use numbers for numeric values and null when a value is unknown.");

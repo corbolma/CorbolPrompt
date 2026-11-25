@@ -525,6 +525,17 @@ namespace CorbolPrompt
             Model("no", "ancora no");
             Check("(ask-data \"Due numeri\")", "ERRORE: ask-data: la risposta non è JSON valido (JSON non valido (carattere inatteso 'a', al carattere 1)): ancora no");
 
+            // ask-data con un dato prima di :fields: arrivano sia i campi sia il dato
+            Model("[{\"cosa\":\"pranzo\",\"euro\":12},{\"cosa\":\"benzina\",\"euro\":45}]");
+            Check("(ask-data \"Estrai le spese\" \"12 di pranzo, 45 di benzina\" :fields '(:cosa :euro))", "((:cosa \"pranzo\" :euro 12) (:cosa \"benzina\" :euro 45))");
+            CheckValue("ask-data con dato: i campi sono nelle istruzioni", requests[0].System.Contains("exactly these keys: cosa, euro"), true);
+            CheckValue("ask-data con dato: il dato arriva al modello", LastUser(), "Estrai le spese\n\nData:\n12 di pranzo, 45 di benzina");
+            Model("{\"nome\": \"Roma\"}");
+            Check("(ask-data \"La più grande\" '((:a 1)) :fields '(:nome))", "((:nome \"Roma\"))");
+            Model("[]");
+            Check("(ask-data \"Estrai\" nil :fields '(:nome))", "nil");
+            CheckValue("ask-data con dato nil: i campi sono nelle istruzioni", requests[0].System.Contains("exactly these keys: nome"), true);
+
             // ai-defun: il primo tentativo sbaglia, il secondo va
             Model("```lisp\n(defun somma (a b) (* a b))\n```", "Corretta:\n```lisp\n(defun somma (a b)\n  (+ a b))\n```");
             Check("(ai-defun somma (a b) \"somma due numeri\" :examples ((somma 2 3) 5 (somma 10 1) 11))", "somma");
