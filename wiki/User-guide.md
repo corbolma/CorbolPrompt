@@ -42,7 +42,7 @@ It is a real terminal, like Windows Terminal: the shells run in the Windows virt
 | Find text | **Ctrl+Shift+F** (see below) |
 | Open an address or a file | **Ctrl+click** (see below) |
 
-In full-screen programs (less, man, vim) the mouse wheel sends the up and down arrows.
+Programs that handle the mouse (Claude Code in full screen, htop, vim with `mouse=a`) receive the wheel and scroll their own content; **Shift+wheel** scrolls the screen history instead, if there is any. In other full-screen programs (less, man) the wheel sends the up and down arrows.
 
 ### Finding text
 The **🔍 Find** button in the top bar, **Ctrl+Shift+F** (or right click → *Find in text...*) opens a bar above the terminal; selected text becomes the search. As you type, every match on the screen and in the history is colored, the current one in orange, with the count next to it (*3 of 12*).

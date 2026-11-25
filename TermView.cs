@@ -1082,8 +1082,24 @@ namespace CorbolPrompt
         // Movimenti della rotellina non ancora diventati righe: il touchpad manda tanti passi piccoli (meno di 120)
         int wheelRest, zoomRest;
 
+        // Chi ha ricevuto l'ultimo movimento (0 schermo, 1 frecce, 2 programma): cambiando destinatario o verso, il resto si azzera
+        int wheelKind;
+
+        int WheelSteps(int kind, int amount)
+        {
+            if (kind != wheelKind || (wheelRest > 0) != (amount > 0)) wheelRest = 0;
+            wheelKind = kind;
+            wheelRest += amount;
+            int n = wheelRest / 120;
+            wheelRest -= n * 120;
+            return n;
+        }
+
         protected override void OnMouseWheel(MouseEventArgs e)
         {
+            // gestita qui: altrimenti Windows la passa anche ai contenitori
+            var handled = e as HandledMouseEventArgs;
+            if (handled != null) handled.Handled = true;
             if ((ModifierKeys & Keys.Control) != 0)
             {
                 zoomRest += e.Delta;
@@ -1095,15 +1111,38 @@ namespace CorbolPrompt
             // righe per scatto come nelle impostazioni di Windows (di solito 3; "una schermata" = 3)
             int perNotch = SystemInformation.MouseWheelScrollLines;
             if (perNotch <= 0 || perNotch > 100) perNotch = 3;
-            wheelRest += e.Delta * perNotch;
-            int lines = wheelRest / 120;
-            wheelRest -= lines * 120;
+            bool shift = (ModifierKeys & Keys.Shift) != 0;
+            bool alt, mouse, sgr, altScroll;
+            int cols, rows;
+            lock (Term.Sync)
+            {
+                alt = Term.AltActive; mouse = Term.MouseOn; sgr = Term.MouseSgr; altScroll = Term.AltScroll;
+                cols = Term.Cols; rows = Term.Rows;
+            }
+            // Il programma ha chiesto il mouse (Claude Code a schermo intero, vim con mouse=a, htop...): riceve la rotellina e
+            // scorre lui quello che c'è sotto il puntatore. Con le frecce scorreva la cronologia dei comandi invece dei risultati.
+            // Con Maiusc, o mentre si guarda la cronologia dello schermo, scorre invece il terminale.
+            if (mouse && !shift && (alt || follow))
+            {
+                int notches = WheelSteps(2, e.Delta);
+                if (notches == 0 || Session == null) return;
+                int x = Math.Max(1, Math.Min(cols, (e.X - pad) / cw + 1)), y = Math.Max(1, Math.Min(rows, (e.Y - pad) / ch + 1));
+                int button = notches > 0 ? 64 : 65;
+                if ((ModifierKeys & Keys.Alt) != 0) button += 8;
+                // formato vecchio: un carattere per coordinata, oltre 95 non sarebbe più un byte solo
+                string ev = sgr ? "\x1b[<" + button + ";" + x + ";" + y + "M"
+                                : "\x1b[M" + (char)(32 + button) + (char)(32 + Math.Min(x, 95)) + (char)(32 + Math.Min(y, 95));
+                var all = new StringBuilder();
+                for (int i = 0; i < Math.Abs(notches); i++) all.Append(ev);
+                Session.Send(all.ToString());
+                return;
+            }
+            if (alt && (shift || !altScroll)) return;   // lo schermo alternativo non ha cronologia
+            int lines = WheelSteps(alt ? 1 : 0, e.Delta * perNotch);
             if (lines == 0) return;
-            bool alt;
-            lock (Term.Sync) alt = Term.AltActive;
             if (alt)
             {
-                // schermo alternativo (less, man, vim...): la rotellina manda le frecce
+                // schermo alternativo senza mouse (less, man...): la rotellina manda le frecce
                 string k = lines > 0 ? (Term.AppCursor ? "\x1bOA" : "\x1b[A") : (Term.AppCursor ? "\x1bOB" : "\x1b[B");
                 var sb = new StringBuilder();
                 for (int i = 0; i < Math.Abs(lines); i++) sb.Append(k);

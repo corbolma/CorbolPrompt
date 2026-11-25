@@ -42,7 +42,7 @@ Con le schede affiancate compare il pulsante **⇶** (anche **Ctrl+Maiusc+B** o 
 | Cercare nel testo | **Ctrl+Maiusc+F** (vedi sotto) |
 | Aprire un indirizzo o un file | **Ctrl+clic** (vedi sotto) |
 
-Nei programmi a schermo intero (less, man, vim) la rotellina manda le frecce su e giù.
+I programmi che gestiscono il mouse (Claude Code a schermo intero, htop, vim con `mouse=a`) ricevono la rotellina e scorrono da soli il loro contenuto; con **Maiusc+rotellina** scorre invece la cronologia dello schermo, se c'è. Negli altri programmi a schermo intero (less, man) la rotellina manda le frecce su e giù.
 
 ### Cercare nel testo
 Il pulsante **🔍 Cerca** nella barra in alto, **Ctrl+Maiusc+F** (o tasto destro → *Cerca nel testo...*) apre una barra sopra il terminale; se c'è del testo selezionato diventa la ricerca. Mentre scrivi tutte le occorrenze nello schermo e nella cronologia si colorano, quella corrente in arancione, e accanto c'è il conteggio (*3 di 12*).

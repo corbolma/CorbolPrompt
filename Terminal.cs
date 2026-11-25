@@ -65,6 +65,12 @@ namespace CorbolPrompt
         int sX, sY, sFg = -1, sBg = -1; ushort sAttr; bool sOrigin;
         public bool AppCursor, BracketedPaste, CursorVisible = true, AutoWrap = true, OriginMode, InsertMode, AppKeypad;
         public int CursorShape;                // 0-2 blocco, 3-4 sottolineato, 5-6 barra (DECSCUSR)
+        // Il programma chiede gli eventi del mouse (DECSET 1000/1002/1003): un bit per modo. MouseSgr: coordinate nel formato 1006.
+        // AltScroll (1007): sullo schermo alternativo, senza eventi del mouse, la rotellina manda le frecce
+        int mouseModes;
+        public bool MouseSgr, AltScroll = true;
+        public bool MouseOn { get { return mouseModes != 0; } }
+        public void ResetMouse() { mouseModes = 0; MouseSgr = false; AltScroll = true; }
         bool[] tabs;
         char g0 = 'B', g1 = 'B'; bool shiftOut;
         Cell lastPrinted; bool hasLast;
@@ -458,6 +464,12 @@ namespace CorbolPrompt
                 case 25: CursorVisible = on; break;
                 case 47: case 1047: SetAlt(on, false); break;
                 case 1049: SetAlt(on, true); break;
+                case 1000: case 1002: case 1003:
+                    int bit = 1 << (m - 1000);
+                    mouseModes = on ? mouseModes | bit : mouseModes & ~bit;
+                    break;
+                case 1006: MouseSgr = on; break;
+                case 1007: AltScroll = on; break;
                 case 2004: BracketedPaste = on; break;
             }
         }
@@ -509,6 +521,7 @@ namespace CorbolPrompt
         void FullReset()
         {
             SoftReset();
+            ResetMouse();
             if (AltActive) SetAlt(false, false);
             mainScreen = NewScreen(Cols, Rows); screen = mainScreen;
             CurX = CurY = 0; wrapNext = false; BracketedPaste = false;
@@ -826,6 +839,7 @@ namespace CorbolPrompt
             switch (arg[0])
             {
                 case 'A':
+                    ResetMouse();   // siamo al prompt: un programma terminato male non lascia la rotellina in mano sua
                     // cmd non manda D: un prompt nuovo più in basso dopo un comando scritto vuol dire che il comando è finito
                     if (last != null && !last.Done && last.InputLine >= 0 && AbsCursorLine > last.InputLine && CommandText(last).Length > 0)
                     {

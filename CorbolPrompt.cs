@@ -684,7 +684,7 @@ namespace CorbolPrompt
         void Restart(TermTab tab)
         {
             try { tab.Session.Close(); } catch { }
-            lock (tab.Term.Sync) tab.Term.Feed("\r\n");
+            lock (tab.Term.Sync) { tab.Term.ResetMouse(); tab.Term.Feed("\r\n"); }
             StartSession(tab, tab.Cwd);
             tabStrip.Invalidate();
         }
@@ -1370,7 +1370,27 @@ namespace CorbolPrompt
             panel.Controls.Add(buttons);   // aggiunto dopo la domanda: prende posto prima, in fondo al pannello
             panel.Controls.Add(header);
             cmdPanel.Height = 0;
-            cmdPanel.Resize += delegate { foreach (Control c in cmdPanel.Controls) c.Width = cmdPanel.ClientSize.Width - 2; };
+            cmdPanel.Resize += delegate { FitCommands(); };
+            // pochi comandi, niente da scorrere: la rotellina scorre la conversazione invece di fermarsi lì sopra
+            cmdPanel.MouseWheel += (s, e) =>
+            {
+                var h = e as HandledMouseEventArgs;
+                if (cmdPanel.VerticalScroll.Visible || cur == null || cur.Chat == null) return;
+                SendMessage(cur.Chat.Handle, 0x020A, (IntPtr)(e.Delta << 16), IntPtr.Zero);
+                if (h != null) h.Handled = true;
+            };
+        }
+
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, int msg, IntPtr w, IntPtr l);
+
+        // Pulsanti dei comandi larghi quanto il pannello, tolta la barra verticale se servirà: se si contasse solo
+        // dopo che è comparsa, resterebbe anche una barra orizzontale
+        void FitCommands()
+        {
+            int h = cmdPanel.Padding.Vertical;
+            foreach (Control c in cmdPanel.Controls) h += c.Height + c.Margin.Vertical;
+            int w = Math.Max(20, cmdPanel.Width - (h > cmdPanel.Height ? SystemInformation.VerticalScrollBarWidth : 0) - 2);
+            foreach (Control c in cmdPanel.Controls) if (c.Width != w) c.Width = w;
         }
 
         void UpdateService()
@@ -1523,6 +1543,7 @@ namespace CorbolPrompt
                 h += bt.Height + 3;
             }
             cmdPanel.Height = t.Commands.Count == 0 ? 0 : Math.Min(h + 6, S(160));
+            FitCommands();
             cmdPanel.ResumeLayout();
         }
 
