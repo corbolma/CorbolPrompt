@@ -60,7 +60,7 @@ Hovering a **web address** (`https://...`, `www....`) or a **path** that exists 
 
 ### Failed commands
 In PowerShell, Command Prompt and Lisp the terminal knows where each command starts and ends. When a command **fails** (in PowerShell and Lisp), a **red mark** appears in the left margin along its lines and the **✦ Explain the error** button appears at the bottom right:
-- the button (or a click on the red mark, or right click → *Explain this command's error*) sends the assistant the command, its exit code and its output; it explains what went wrong and suggests the corrected command as a ▶ button;
+- the button (or a click on the red mark, or right click → *Explain this command's error*) sends the assistant the command, its exit code and, if you allow sending the lines of the terminal, its output; it explains what went wrong and suggests the corrected command as a ▶ button;
 - the button disappears with the next command; the red marks stay while the lines are in the history.
 
 Command Prompt does not report the exit code, so there are no red marks there; nor in WSL and Git Bash.
@@ -100,7 +100,7 @@ The panel on the right. At the top it always shows the **service** in use and, f
 | **OpenAI-compatible** | address, key and model (OpenAI, OpenRouter, Ollama, LM Studio...) |
 | **Local assistant** | downloaded once (model and llama.cpp); runs on the PC, data stays here. Needs a PC with at least 16 GB of RAM |
 
-**Send the assistant the last lines of the terminal**: on by default. Turn it off if there are passwords or confidential data on the screen; the assistant will only see the question, the shell, the folder and the names of the other tabs (with **Explain the error** it still gets that command and its output). API keys are encrypted with Windows DPAPI.
+**Send the assistant the last lines of the terminal**: on by default. Turn it off if there are passwords or confidential data on the screen; the assistant will only see the question, the shell, the folder and the names of the other tabs (with **Explain the error** also that command and its exit code, but not its output). API keys are encrypted with Windows DPAPI.
 
 Claude Code accounts are shared with the other Corbol apps.
 

@@ -159,7 +159,8 @@ Tutti i dettagli sono nella [[Guida al Lisp|Lisp#lia-nel-linguaggio]].
 | la domanda, la shell e la cartella della scheda, i nomi (con shell e cartella) delle altre schede, la conversazione della scheda | sempre, con una domanda del pannello |
 | le ultime 80 righe dello schermo e il testo selezionato | se **Manda all'assistente le ultime righe del terminale** è acceso (lo è di serie) |
 | le ultime 40 righe di un'altra scheda | come sopra, e solo se la nomini nella domanda o parli delle "schede" |
-| il comando, il codice di uscita e il suo output | con **Spiega l'errore**, **anche se l'opzione è spenta** |
+| il comando e il codice di uscita | con **Spiega l'errore** |
+| l'output di quel comando | con **Spiega l'errore**, se l'opzione è accesa (fino alla 0.4.0 anche da spenta) |
 | solo la domanda e il dato che le passi | con `ask` e `ask-data` |
 | il nome, gli argomenti, la descrizione e gli esempi; se un tentativo non va, l'errore | con `ai-defun` |
 | il codice e l'errore | con `(why)` |

@@ -159,7 +159,8 @@ All the details are in the [[Lisp guide|Lisp-guide#ai-in-the-language]].
 | the question, the tab's shell and folder, the names (with shell and folder) of the other tabs, the tab's conversation | always, with a question in the panel |
 | the last 80 lines of the screen and the selected text | if **Send the assistant the last lines of the terminal** is on (it is by default) |
 | the last 40 lines of another tab | as above, and only if you name it in the question or speak of "tabs" |
-| the command, its exit code and its output | with **Explain the error**, **even if the option is off** |
+| the command and its exit code | with **Explain the error** |
+| that command's output | with **Explain the error**, if the option is on (up to 0.4.0, even when off) |
 | only the question and the data you pass | with `ask` and `ask-data` |
 | the name, arguments, description and examples; if an attempt fails, the error | with `ai-defun` |
 | the code and the error | with `(why)` |

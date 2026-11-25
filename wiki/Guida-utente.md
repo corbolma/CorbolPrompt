@@ -60,7 +60,7 @@ Passando col mouse su un **indirizzo web** (`https://...`, `www....`) o su un **
 
 ### Comandi falliti
 In PowerShell, nel Prompt dei comandi e nel Lisp il terminale sa dove inizia e finisce ogni comando. Quando un comando **fallisce** (in PowerShell e nel Lisp), nel margine sinistro compare un **segno rosso** lungo le sue righe e in basso a destra il pulsante **✦ Spiega l'errore**:
-- il pulsante (o un clic sul segno rosso, o tasto destro → *Spiega l'errore di questo comando*) manda all'assistente il comando, il codice di uscita e il suo output, e lui spiega cosa è andato storto e propone il comando corretto come pulsante ▶;
+- il pulsante (o un clic sul segno rosso, o tasto destro → *Spiega l'errore di questo comando*) manda all'assistente il comando, il codice di uscita e, se permetti di mandare le righe del terminale, il suo output, e lui spiega cosa è andato storto e propone il comando corretto come pulsante ▶;
 - il pulsante sparisce al comando successivo; i segni rossi restano finché le righe sono nella cronologia.
 
 Il Prompt dei comandi non fa sapere il codice di uscita, quindi lì i segni rossi non ci sono; in WSL e Git Bash nemmeno.
@@ -100,7 +100,7 @@ Il pannello a destra. In cima c'è sempre scritto il **servizio** in uso e, per 
 | **Compatibile OpenAI** | indirizzo, chiave e modello (OpenAI, OpenRouter, Ollama, LM Studio...) |
 | **Assistente locale** | si scarica una volta (modello e llama.cpp); gira sul PC, i dati non escono. Serve un PC con almeno 16 GB di RAM |
 
-**Manda all'assistente le ultime righe del terminale**: acceso di serie. Spegnilo se sullo schermo ci sono password o dati riservati; l'assistente vedrà solo la domanda, la shell, la cartella e i nomi delle altre schede (con **Spiega l'errore** riceve comunque quel comando e il suo output). Le chiavi API sono cifrate con DPAPI di Windows.
+**Manda all'assistente le ultime righe del terminale**: acceso di serie. Spegnilo se sullo schermo ci sono password o dati riservati; l'assistente vedrà solo la domanda, la shell, la cartella e i nomi delle altre schede (con **Spiega l'errore** anche quel comando e il codice di uscita, ma non il suo output). Le chiavi API sono cifrate con DPAPI di Windows.
 
 Gli account di Claude Code sono condivisi con le altre app Corbol.
 

@@ -1825,20 +1825,20 @@ namespace CorbolPrompt
             if (notifier != null) notifier.Visible = false;
         }
 
-        // Comando fallito (segno rosso o pulsante "Spiega l'errore"): all'assistente vanno il comando, il codice e il suo output
+        // Comando fallito (segno rosso o pulsante "Spiega l'errore"): all'assistente vanno il comando, il codice
+        // e, se l'utente permette di mandare le righe del terminale, il suo output
         void ExplainCommand(TermTab t, CmdMark m)
         {
             if (t == null || !Tabs.Contains(t)) return;
-            string cmd, output;
-            lock (t.Term.Sync) { cmd = t.Term.CommandText(m); output = t.Term.CommandOutput(m, 150); }
-            if (output.Length > 8000) output = "…" + output.Substring(output.Length - 8000);
+            string cmd, output = null;
+            lock (t.Term.Sync) { cmd = t.Term.CommandText(m); if (AiSettings.SendScreen) output = t.Term.CommandOutput(m, 150); }
+            if (output != null && output.Length > 8000) output = "…" + output.Substring(output.Length - 8000);
             if (t != cur) Activate(t);
             if (t.Busy) { ShowAssistant(); return; }
             string shortCmd = cmd.Length > 60 ? cmd.Substring(0, 59) + "…" : cmd;
             Ask(m.ExitCode == 1 ? L.F("Perché {0} non ha funzionato?", "Why did {0} fail?", shortCmd.Length > 0 ? "`" + shortCmd + "`" : L.T("il comando", "the command"))
                                 : L.F("Perché {0} non ha funzionato (codice {1})?", "Why did {0} fail (exit code {1})?", shortCmd.Length > 0 ? "`" + shortCmd + "`" : L.T("il comando", "the command"), m.ExitCode),
-                "The user ran this command and it failed with exit code " + m.ExitCode + ":\n```\n" + cmd + "\n```\nIts output:\n```text\n" +
-                (output.Length > 0 ? output : "(no output)") + "\n```\nExplain briefly what went wrong and, if possible, give the corrected command.\n");
+                Prompt.FailedCommand(cmd, m.ExitCode, output));
         }
 
         // Testo per l'assistente: scheda, shell, cartella, ultime righe, selezione, altre schede, richiesta

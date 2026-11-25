@@ -35,6 +35,15 @@ Extras that are not Common Lisp: (range n) / (range a b step), (iota n), (split-
 System: (sh ""cmd"") runs a command with cmd.exe and shows its output, returns the exit code; (pwsh ""cmd"") the same with PowerShell; (run ""cmd"") returns the output as a string; (run-lines ""cmd"") as a list of lines; (cd ""dir""), (pwd), (ls [dir]) returns a list of names (folders end with /); (read-file f), (read-lines f), (write-file f text), (append-file f text), (file-exists-p f), (mkdir d), (delete-file f), (getenv ""X""), (load ""file.lisp""), (sleep s), (clear), (exit).
 Not supported: CLOS (defclass, defmethod), packages, real condition system and restarts, multiple values, ratios, complex numbers, reader macros, tagbody/go.";
 
+        // Il comando fallito da spiegare. output null = l'utente non permette di mandare le righe del terminale
+        public static string FailedCommand(string cmd, int exitCode, string output)
+        {
+            string s = "The user ran this command and it failed with exit code " + exitCode + ":\n```\n" + cmd + "\n```\n";
+            if (output == null)
+                return s + "Its output is not included: the user turned off sending the lines of the terminal. From the command and the exit code alone, say briefly what the likely causes are and, if possible, give the corrected command; if the output is needed, ask the user to paste the relevant lines.\n";
+            return s + "Its output:\n```text\n" + (output.Length > 0 ? output : "(no output)") + "\n```\nExplain briefly what went wrong and, if possible, give the corrected command.\n";
+        }
+
         // Linguaggi dei blocchi che diventano comandi eseguibili
         static readonly Dictionary<string, string> runnable = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
