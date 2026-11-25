@@ -78,6 +78,8 @@ Trascinando file o cartelle da Esplora file sul terminale se ne scrive il **perc
 *Apri*, *Copia il link*, *Mostra in Esplora file* (su un link), *Spiega l'errore di questo comando* (su un comando fallito), *Copia*, *Incolla*, *Seleziona tutto*, *Aggiungi ai preferiti...* (con del testo selezionato), *Cerca nel testo...*, *Spiega la selezione / lo schermo con l'assistente*, *Chiedi all'assistente...*, *Cancella la cronologia dello schermo*.
 
 ## L'assistente
+*Cosa si può chiedere, con esempi, e i comandi dell'IA nel Lisp: vedi [[Assistente IA|Assistente-IA]].*
+
 Il pannello a destra. In cima c'è sempre scritto il **servizio** in uso e, per Claude Code, **l'account** (email): clic per cambiarli.
 
 - Scrivi una domanda e premi **Invio** (Maiusc+Invio va a capo, Esc torna al terminale). Esempi: *"come trovo i file più grandi di 1 GB?"*, *"cosa vuol dire questo errore?"*, *"crea un repository git qui"*.
@@ -98,7 +100,7 @@ Il pannello a destra. In cima c'è sempre scritto il **servizio** in uso e, per 
 | **Compatibile OpenAI** | indirizzo, chiave e modello (OpenAI, OpenRouter, Ollama, LM Studio...) |
 | **Assistente locale** | si scarica una volta (modello e llama.cpp); gira sul PC, i dati non escono. Serve un PC con almeno 16 GB di RAM |
 
-**Manda all'assistente le ultime righe del terminale**: acceso di serie. Spegnilo se sullo schermo ci sono password o dati riservati; l'assistente vedrà solo la domanda, la shell e la cartella. Le chiavi API sono cifrate con DPAPI di Windows.
+**Manda all'assistente le ultime righe del terminale**: acceso di serie. Spegnilo se sullo schermo ci sono password o dati riservati; l'assistente vedrà solo la domanda, la shell, la cartella e i nomi delle altre schede (con **Spiega l'errore** riceve comunque quel comando e il suo output). Le chiavi API sono cifrate con DPAPI di Windows.
 
 Gli account di Claude Code sono condivisi con le altre app Corbol.
 

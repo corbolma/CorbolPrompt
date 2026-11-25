@@ -78,6 +78,8 @@ Dragging files or folders from File Explorer onto the terminal types their **pat
 *Open*, *Copy link*, *Show in File Explorer* (on a link), *Explain this command's error* (on a failed command), *Copy*, *Paste*, *Select all*, *Add to favorites...* (with text selected), *Find in text...*, *Explain the selection / the screen with the assistant*, *Ask the assistant...*, *Clear the screen history*.
 
 ## The assistant
+*What you can ask, with examples, and the AI commands in Lisp: see [[AI assistant|AI-assistant]].*
+
 The panel on the right. At the top it always shows the **service** in use and, for Claude Code, the **account** (email): click to change them.
 
 - Type a question and press **Enter** (Shift+Enter for a new line, Esc goes back to the terminal). Examples: *"how do I find files larger than 1 GB?"*, *"what does this error mean?"*, *"create a git repository here"*.
@@ -98,7 +100,7 @@ The panel on the right. At the top it always shows the **service** in use and, f
 | **OpenAI-compatible** | address, key and model (OpenAI, OpenRouter, Ollama, LM Studio...) |
 | **Local assistant** | downloaded once (model and llama.cpp); runs on the PC, data stays here. Needs a PC with at least 16 GB of RAM |
 
-**Send the assistant the last lines of the terminal**: on by default. Turn it off if there are passwords or confidential data on the screen; the assistant will only see the question, the shell and the folder. API keys are encrypted with Windows DPAPI.
+**Send the assistant the last lines of the terminal**: on by default. Turn it off if there are passwords or confidential data on the screen; the assistant will only see the question, the shell, the folder and the names of the other tabs (with **Explain the error** it still gets that command and its output). API keys are encrypted with Windows DPAPI.
 
 Claude Code accounts are shared with the other Corbol apps.
 

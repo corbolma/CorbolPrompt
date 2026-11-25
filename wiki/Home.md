@@ -24,6 +24,7 @@ Interfaccia in **italiano e inglese**; altre lingue si aggiungono con un file di
 ## Pagine
 - [[Installazione]]: come installare, aggiornare e disinstallare
 - [[Guida utente|Guida-utente]]: schede, terminale, assistente, preferiti, tasti
+- [[Assistente IA|Assistente-IA]]: cosa si può chiedere, i comandi dell'IA, i servizi, cosa viene mandato
 - [[Guida al Lisp|Lisp]]: il linguaggio della scheda Lisp, con esempi
 - [[Domande frequenti|Domande-frequenti]]: SmartScreen, caratteri, shell che non compaiono...
 - [[Compilare e rilasciare|Compilare-e-rilasciare]]: per chi vuole modificare il codice

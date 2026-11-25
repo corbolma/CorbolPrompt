@@ -24,6 +24,7 @@ Interface in **English and Italian**; more languages can be added with a text fi
 ## Pages
 - [[Installation]]: how to install, update and uninstall
 - [[User guide|User-guide]]: tabs, terminal, assistant, favorites, keys
+- [[AI assistant|AI-assistant]]: what you can ask, the AI commands, the services, what is sent
 - [[Lisp guide|Lisp-guide]]: the language of the Lisp tab, with examples
 - [[FAQ]]: SmartScreen, fonts, missing shells...
 - [[Building and releasing|Building-and-releasing]]: for those who want to change the code

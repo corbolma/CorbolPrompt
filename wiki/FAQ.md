@@ -26,7 +26,7 @@ Ctrl+C copies **only when text is selected**; otherwise, as in any terminal, it 
 Install [Claude Code](https://claude.com/claude-code) and log in once (type `claude` in a tab and follow the instructions). If you have several subscriptions, choose the account in **⋯ → Assistant settings**. Otherwise use a Claude API key, an OpenAI-compatible service or the local assistant.
 
 ### What does the assistant see? Does it run commands by itself?
-It sees your question, the tab's shell and folder, the names of the other tabs and, if the option is on, the last lines of the screen and the selected text. **It runs nothing by itself**: the commands it suggests start only when you press their ▶ button. With Claude Code the assistant runs without tools: it doesn't read files or run commands.
+It sees your question, the tab's shell and folder, the names of the other tabs and, if the option is on, the last lines of the screen and the selected text. **It runs nothing by itself**: the commands it suggests start only when you press their ▶ button. With Claude Code the assistant runs without tools: it doesn't read files or run commands. The full list is in [[AI assistant|AI-assistant#what-is-sent]].
 
 ### The tabs didn't come back
 The tabs of the main window closed last come back. Windows opened with **Open in CorbolPrompt** on a folder don't change the tabs to reopen. Commands that were running are not started again.

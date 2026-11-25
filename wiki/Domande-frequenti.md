@@ -26,7 +26,7 @@ Ctrl+C copia **solo se c'è del testo selezionato**; altrimenti, come in ogni te
 Installa [Claude Code](https://claude.com/claude-code) e fai il login una volta (scrivi `claude` in una scheda e segui le istruzioni). Se hai più abbonamenti, scegli l'account in **⋯ → Impostazioni dell'assistente**. In alternativa usa la chiave API di Claude, un servizio compatibile OpenAI o l'assistente locale.
 
 ### Cosa vede l'assistente? Esegue comandi da solo?
-Vede la tua domanda, la shell e la cartella della scheda, i nomi delle altre schede e, se l'opzione è accesa, le ultime righe dello schermo e il testo selezionato. **Non esegue niente da solo**: i comandi che propone partono solo quando premi il loro pulsante ▶. Con Claude Code l'assistente gira senza strumenti: non legge file e non esegue comandi.
+Vede la tua domanda, la shell e la cartella della scheda, i nomi delle altre schede e, se l'opzione è accesa, le ultime righe dello schermo e il testo selezionato. **Non esegue niente da solo**: i comandi che propone partono solo quando premi il loro pulsante ▶. Con Claude Code l'assistente gira senza strumenti: non legge file e non esegue comandi. L'elenco completo è in [[Assistente IA|Assistente-IA#cosa-viene-mandato]].
 
 ### Le schede non si sono riaperte
 Si riaprono le schede della finestra principale chiusa per ultima. Le finestre aperte con **Apri in CorbolPrompt** su una cartella non cambiano le schede da riaprire. I comandi che erano in corso non vengono rilanciati.

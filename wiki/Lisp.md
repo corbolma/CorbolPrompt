@@ -240,6 +240,9 @@ Running  ███████████████████████�
 λ> (format t "andamento: ~a~%" (sparkline '(3 5 9 4 2 8 12 7)))
 andamento: ▂▃▆▂▁▅█▅
 ```
+
+| | |
+|---|---|
 | `(json-parse testo)`, `(read-json file)` | dal JSON: oggetti → plist, array → liste, `true` → t, `false`/`null` → nil |
 | `(json-encode dato)`, `(json-encode dato :pretty t)` | al JSON: plist, tabelle hash e strutture → oggetti, liste e vettori → array; `:false` scrive `false` |
 
@@ -255,6 +258,8 @@ In tutte queste funzioni il dato va per ultimo, così si concatenano con `->>`:
 Nota: dato che le chiavi diventano minuscole, `json-encode` non ricrea le maiuscole originali (`:process-name` → `"process-name"`).
 
 ## L'IA nel linguaggio
+Per cominciare, con esempi semplici: [[Assistente IA|Assistente-IA#i-comandi-dellia-nel-lisp]].
+
 Queste funzioni usano il servizio scelto in **⋯ → Impostazioni dell'assistente** (Claude Code, API Claude, servizio compatibile OpenAI o modello locale). Ctrl+C interrompe l'attesa.
 
 | | |
@@ -262,7 +267,7 @@ Queste funzioni usano il servizio scelto in **⋯ → Impostazioni dell'assisten
 | `(ask "domanda")`, `(ask "domanda" dato)` | la risposta come stringa; il dato (una lista, delle righe di `ps`, un testo) arriva al modello in JSON |
 | `(ask-data "richiesta")`, `(ask-data "richiesta" dato :fields '(:a :b))` | la risposta come **dati**: il modello risponde in JSON e il Lisp lo legge come `json-parse`; con `:fields` è sempre una lista di plist con quei campi, che il REPL mostra come tabella |
 | `(ai-defun nome (arg...) "cosa fa" :examples ((nome 1 2) 3 ...))` | il modello scrive la funzione, il Lisp la definisce e la prova sugli esempi; se un esempio sbaglia o dà errore, gli rimanda il problema e riprova (fino a 3 volte). Il codice viene mostrato |
-| `(ai-source 'nome)` | il testo della funzione scritta da `ai-defun`, per salvarla: `(append-file "init.lisp" (ai-source 'nome))` |
+| `(ai-source 'nome)` | il testo della funzione scritta da `ai-defun`, per salvarla: `(append-file (concatenate 'string (getenv "APPDATA") "/CorbolPrompt/init.lisp") (ai-source 'nome))` |
 | `(why)` | spiega l'ultimo errore del REPL e propone la correzione |
 
 ```lisp

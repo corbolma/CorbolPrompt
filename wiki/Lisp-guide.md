@@ -240,6 +240,9 @@ Running  ███████████████████████�
 λ> (format t "trend: ~a~%" (sparkline '(3 5 9 4 2 8 12 7)))
 trend: ▂▃▆▂▁▅█▅
 ```
+
+| | |
+|---|---|
 | `(json-parse text)`, `(read-json file)` | from JSON: objects → plists, arrays → lists, `true` → t, `false`/`null` → nil |
 | `(json-encode data)`, `(json-encode data :pretty t)` | to JSON: plists, hash tables and structures → objects, lists and vectors → arrays; `:false` writes `false` |
 
@@ -255,6 +258,8 @@ In all these functions the data comes last, so they chain with `->>`:
 Note: since keys become lowercase, `json-encode` does not bring back the original capitals (`:process-name` → `"process-name"`).
 
 ## AI in the language
+To get started, with simple examples: [[AI assistant|AI-assistant#ai-commands-in-lisp]].
+
 These functions use the service chosen in **⋯ → Assistant settings** (Claude Code, Claude API, an OpenAI-compatible service or the local model). Ctrl+C stops the wait.
 
 | | |
@@ -262,7 +267,7 @@ These functions use the service chosen in **⋯ → Assistant settings** (Claude
 | `(ask "question")`, `(ask "question" data)` | the answer as a string; the data (a list, rows from `ps`, a text) reaches the model as JSON |
 | `(ask-data "request")`, `(ask-data "request" data :fields '(:a :b))` | the answer as **data**: the model replies in JSON and Lisp reads it like `json-parse`; with `:fields` it is always a list of plists with those fields, which the REPL shows as a table |
 | `(ai-defun name (arg...) "what it does" :examples ((name 1 2) 3 ...))` | the model writes the function, Lisp defines it and tries it on the examples; if an example is wrong or signals an error, the problem goes back to the model for another try (up to 3). The code is shown |
-| `(ai-source 'name)` | the text of the function written by `ai-defun`, to save it: `(append-file "init.lisp" (ai-source 'name))` |
+| `(ai-source 'name)` | the text of the function written by `ai-defun`, to save it: `(append-file (concatenate 'string (getenv "APPDATA") "/CorbolPrompt/init.lisp") (ai-source 'name))` |
 | `(why)` | explains the last REPL error and suggests the fix |
 
 ```lisp
