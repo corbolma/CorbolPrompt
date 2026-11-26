@@ -7,6 +7,7 @@ An error occurred: =
 (exited) = 
 No results = 
 {0} of {1} = 
+Folder not found:  = 
 Could not start {0}: {1} = 
 [process exited with code {0}: Enter to restart it, Ctrl+Shift+W to close the tab] = 
 (default) = 
@@ -24,6 +25,7 @@ Open folder in File Explorer =
 Enter = confirm, Esc = cancel. Empty = automatic name. = 
 New tab = 
 Default shell = 
+Open the folder in = 
 Assistant settings... = 
 Larger text = 
 Smaller text = 

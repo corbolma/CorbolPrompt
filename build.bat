@@ -18,7 +18,7 @@ if exist corbolprompt.ico set ICON=/win32icon:corbolprompt.ico /resource:corbolp
 "%CSC%" /nologo /codepage:65001 /target:winexe /optimize+ /out:CorbolPrompt.exe %ICON% ^
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Core.dll /r:System.Numerics.dll ^
   /r:System.Web.Extensions.dll /r:System.Security.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ^
-  CorbolPrompt.cs Tabs.cs Pty.cs Terminal.cs TermView.cs Lisp.cs LispLib.cs LispData.cs LispAi.cs LispWin.cs LispHelp.cs LispRepl.cs Assistant.cs Favorites.cs Welcome.cs Ai.cs AiLocal.cs Lang.cs Updater.cs Version.cs %LANGRES%
+  CorbolPrompt.cs Tabs.cs Pty.cs Terminal.cs TermView.cs Lisp.cs LispLib.cs LispData.cs LispAi.cs LispWin.cs LispHelp.cs LispRepl.cs Assistant.cs Favorites.cs Welcome.cs Ai.cs AiLocal.cs Lang.cs Updater.cs Version.cs CorbolLink.cs %LANGRES%
 if errorlevel 1 (
   echo Compilazione fallita.
   exit /b 1

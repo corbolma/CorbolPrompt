@@ -38,6 +38,7 @@ namespace CorbolPrompt
             L.Set(Settings.Get("lang", "auto"));
             // "CorbolPrompt.exe <cartella>" apre una scheda in quella cartella
             string dir = args.FirstOrDefault(a => !a.StartsWith("/") && Directory.Exists(a));
+            Corbol.Link.Start("CorbolPrompt", L.T);   // comandi dalle altre app Corbol (CorbolLink.cs): MainForm.StartLink
             Application.Run(new MainForm(dir));
         }
     }
@@ -379,6 +380,7 @@ namespace CorbolPrompt
                 split.Panel2Collapsed = !Settings.Get("ai.visible", true);
                 tbAi.Checked = !split.Panel2Collapsed;
                 if (startDir != null || !RestoreSession()) NewTab(ShellInfo.Default, startDir);
+                StartLink();
                 UpdateService();
                 Updater.CheckIfDue(this);
                 // presentazione al primo avvio (una volta sola)
@@ -604,6 +606,49 @@ namespace CorbolPrompt
         }
 
         // ---------- schede ----------
+
+        // Comandi dalle altre app Corbol: una scheda in una cartella; un comando scritto (non eseguito) in una scheda nuova
+        void StartLink()
+        {
+            Corbol.Link.Handle("open", delegate (List<string> a)
+            {
+                Front();
+                foreach (var p in a)
+                {
+                    string dir = Directory.Exists(p) ? p : File.Exists(p) ? Path.GetDirectoryName(p) : null;
+                    if (dir == null) throw new Exception(L.T("Cartella non trovata: ", "Folder not found: ") + p);
+                    NewTab(ShellInfo.Default, dir);
+                }
+                return "ok";
+            });
+            Corbol.Link.Handle("paste", delegate (List<string> a)
+            {
+                if (a.Count == 0 || a[0].Trim().Length == 0) throw new Exception("paste: missing command");
+                string dir = a.Count > 1 && Directory.Exists(a[1]) ? a[1] : cur != null ? cur.Cwd : null;
+                Front();
+                var tab = NewTab(ShellInfo.Default, dir);
+                string code = a[0].Replace("\r\n", "\n").TrimEnd('\n');
+                // la shell deve prima partire e mostrare il prompt
+                var tm = new System.Windows.Forms.Timer { Interval = 1500 };
+                tm.Tick += delegate
+                {
+                    tm.Stop(); tm.Dispose();
+                    if (!Tabs.Contains(tab) || tab.Exited) return;
+                    Activate(tab);
+                    tab.View.Paste(code);
+                    tab.View.Focus();
+                };
+                tm.Start();
+                return "ok: typed, not run";
+            });
+            Corbol.Link.Ready();
+        }
+
+        void Front()
+        {
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            Activate();
+        }
 
         TermTab NewTab(ShellInfo shell, string cwd)
         {
@@ -1012,6 +1057,7 @@ namespace CorbolPrompt
                 }
             };
             defShell.DropDownItems.Add("-");
+            var openIn = Corbol.Link.OpenInMenu(L.T("Apri la cartella in", "Open the folder in"), () => cur != null && Directory.Exists(cur.Cwd ?? "") ? new[] { cur.Cwd } : null);
             var aiSettings = new ToolStripMenuItem(L.T("Impostazioni dell'assistente...", "Assistant settings..."));
             aiSettings.Click += delegate { ShowAiSettings(); };
             var bigger = new ToolStripMenuItem(L.T("Carattere più grande", "Larger text")) { ShortcutKeyDisplayString = "Ctrl++" };
@@ -1067,7 +1113,7 @@ namespace CorbolPrompt
                 upd.Click += delegate { Updater.Offer(this); };
                 dd.AddRange(new ToolStripItem[] { upd, new ToolStripSeparator() });
             }
-            dd.AddRange(new ToolStripItem[] { newSub, defShell, new ToolStripSeparator(), aiSettings, new ToolStripSeparator(), bigger, smaller, normal,
+            dd.AddRange(new ToolStripItem[] { newSub, defShell, openIn, new ToolStripSeparator(), aiSettings, new ToolStripSeparator(), bigger, smaller, normal,
                                               new ToolStripSeparator(), findItem, tileItem, bcItem, lang, showBar, notify, new ToolStripSeparator(), welcome, guide, lispGuide, keys, new ToolStripSeparator(), check, autoUpd, about });
         }
 
@@ -1937,7 +1983,7 @@ namespace CorbolPrompt
                 Say(t, L.T("Assistente", "Assistant"), missing + " " + L.T("Configuralo dal menu ⋯ → Impostazioni dell'assistente.", "Set it up from the ⋯ menu → Assistant settings."), Color.Firebrick);
                 return;
             }
-            var req = new AiRequest { System = Prompt.System };
+            var req = new AiRequest { System = Prompt.System + Corbol.Link.AiPrompt() };
             foreach (var m in t.History.Skip(Math.Max(0, t.History.Count - 12))) req.Messages.Add(m);
             req.Messages.Add(new AiMessage("user", Context(t, text, details)));
             t.AiCancel = new CancellationTokenSource();
@@ -1966,10 +2012,16 @@ namespace CorbolPrompt
             if (!Tabs.Contains(t)) return;
             if (res.Cancelled) { Say(t, L.T("Assistente", "Assistant"), L.T("(interrotto)", "(stopped)"), Color.Gray); return; }
             if (!res.Ok) { Say(t, L.T("Assistente", "Assistant"), res.Error, Color.Firebrick); return; }
+            string text;
+            var acts = Corbol.Link.TakeActions(res.Text, out text);
             t.History.Add(new AiMessage("user", question));
-            t.History.Add(new AiMessage("assistant", res.Text));
-            SayReply(t, res.Text);
-            t.Commands = Prompt.Blocks(res.Text);
+            var said = new AiMessage("assistant", text);
+            t.History.Add(said);
+            SayReply(t, text.Length > 0 ? text : "…");
+            t.Commands = Prompt.Blocks(text);
+            Corbol.Link.RunActions(this, acts,
+                (a, txt, ok) => { if (Tabs.Contains(t)) Say(t, "CorbolPrompt", Corbol.Link.Note(a, txt, ok), ok ? Color.Gray : Color.DarkOrange); },
+                sum => { said.Text += sum == null ? "\n[the user did not allow the commands for the other apps]" : "\n[results of the commands for the other apps]\n" + sum; });
             if (t == cur) ShowCommands(t);
         }
 

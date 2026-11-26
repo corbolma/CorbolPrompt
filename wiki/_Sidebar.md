@@ -3,6 +3,7 @@
 **Italiano**
 - [Installazione](Installazione)
 - [Guida utente](Guida-utente)
+- [App Corbol](App-Corbol)
 - [Assistente IA](Assistente-IA)
 - [Guida al Lisp](Lisp)
 - [Domande frequenti](Domande-frequenti)
@@ -11,6 +12,7 @@
 **[English](English)**
 - [Installation](Installation)
 - [User guide](User-guide)
+- [Corbol apps](Corbol-apps)
 - [AI assistant](AI-assistant)
 - [Lisp guide](Lisp-guide)
 - [FAQ](FAQ)
