@@ -17,6 +17,7 @@ fact
 | Enter | evaluates; if the parentheses are not closed you continue on the next line (`..` prompt) |
 | ↑ ↓ | history (kept between sessions) |
 | Tab | completes the name; two Tabs list the choices |
+| → or End (at the end of the line) | accepts the grey suggestion: the last history entry that starts the same way, or a function name; Ctrl+→ / Alt+F takes one word of it |
 | Ctrl+C | interrupts the evaluation (even an endless loop or a system command); while typing it cancels the line |
 | Ctrl+L | clears the screen |
 | Ctrl+A / Ctrl+E, Home / End | start / end of line |
@@ -301,7 +302,7 @@ Safety: `ai-defun` accepts only one `defun` with the right name. If the code use
 | `(http-post url body)` | like `http-get`, with a body: a string goes as it is, data (a plist, a list) goes as JSON |
 | `(http-json url)`, `(http-json url :body data)` | the response read like `json-parse`; with `:body` it is a POST |
 | `(watch seconds form...)` | repeats the forms and **redraws in place** what they print and the result (as a table when it is one), until you press Ctrl+C; `:times n` stops after n times, `(return x)` leaves with `x` |
-| `(every seconds form...)` | repeats the forms every so many seconds, without redrawing: for checks and alerts; Ctrl+C or `(return x)` to finish |
+| `(every seconds form...)` | repeats the forms every so many seconds, without redrawing: for checks and alerts; Ctrl+C or `(return x)` to finish. When the first argument is not a number, `every` is the Common Lisp one: `(every #'evenp list)` |
 | `(choose-file)` | the window to pick a file: the path, or `nil` if you cancel; `:title`, `:filter "*.csv"`, `:save t` to save, `:multiple t` for a list of files |
 | `(choose-folder)` | the window to pick a folder |
 

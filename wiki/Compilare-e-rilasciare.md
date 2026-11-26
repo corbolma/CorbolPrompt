@@ -18,6 +18,7 @@ crea `CorbolPrompt.exe` nella cartella del progetto. Se manca l'icona `corbolpro
 | `Tabs.cs` | barra delle schede |
 | `Lisp.cs`, `LispLib.cs`, `LispData.cs`, `LispAi.cs`, `LispWin.cs` | l'interprete Lisp e le sue funzioni (`LispData.cs`: JSON, `ps`, tabelle, grafici; `LispAi.cs`: `ask`, `ai-defun`, `why`; `LispWin.cs`: appunti, `notify`, `http-get`, `watch`, `choose-file`) |
 | `LispRepl.cs` | la riga di comando della scheda Lisp |
+| `LispHelp.cs` | l'aiuto mentre si scrive: gli argomenti delle funzioni e il nome suggerito |
 | `Assistant.cs` | istruzioni per l'assistente e lettura delle risposte (blocchi di codice → pulsanti ▶) |
 | `Ai.cs`, `AiLocal.cs` | servizi dell'assistente (Claude Code, API, compatibili OpenAI, locale) e impostazioni |
 | `Favorites.cs` | preferiti e finestra per gestirli |

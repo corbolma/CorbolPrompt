@@ -1,6 +1,7 @@
 // Scheda Lisp: il ciclo leggi-valuta-stampa dell'interprete, con una riga di comando fatta qui
 // (cronologia con le frecce, completamento con Tab, più righe finché le parentesi non sono chiuse,
-// Ctrl+C interrompe). Scrive nell'emulatore come un programma qualunque, con sequenze VT.
+// Ctrl+C interrompe). Mentre si scrive: il seguito suggerito in grigio (dalla cronologia o il nome di una
+// funzione, si accetta con → o Fine) e, sotto, gli argomenti della funzione in cui si trova il cursore. Scrive nell'emulatore come un programma qualunque, con sequenze VT.
 // La valutazione gira in un thread con uno stack grande (ricorsioni profonde), uno per scheda.
 // Compatibile con il compilatore csc di .NET Framework 4.x (C# 5).
 using System;
@@ -33,6 +34,7 @@ namespace CorbolPrompt
         int histIndex = -1;
         string histSaved = "";
         bool lastTab;
+        string ghost;                         // il seguito suggerito, mostrato in grigio dopo il cursore
         // (read-line) dal programma Lisp
         string readResult;
         readonly AutoResetEvent readDone = new AutoResetEvent(false);
@@ -215,14 +217,14 @@ namespace CorbolPrompt
             {
                 case 'A': if (mode == Mode.Editing) History(-1); return;
                 case 'B': if (mode == Mode.Editing) History(1); return;
-                case 'C': if (ctrl) WordRight(); else if (pos < buf.Length) pos++; Render(); return;
+                case 'C': if (AcceptGhost(ctrl)) return; if (ctrl) WordRight(); else if (pos < buf.Length) pos++; Render(); return;
                 case 'D': if (ctrl) WordLeft(); else if (pos > 0) pos--; Render(); return;
                 case 'H': pos = 0; Render(); return;
-                case 'F': pos = buf.Length; Render(); return;
+                case 'F': if (AcceptGhost(false)) return; pos = buf.Length; Render(); return;
                 case '~':
                     if (seq.StartsWith("3")) { if (pos < buf.Length) { buf.Remove(pos, 1); Render(); } }
                     else if (seq.StartsWith("1") || seq.StartsWith("7")) { pos = 0; Render(); }
-                    else if (seq.StartsWith("4") || seq.StartsWith("8")) { pos = buf.Length; Render(); }
+                    else if (seq.StartsWith("4") || seq.StartsWith("8")) { if (AcceptGhost(false)) return; pos = buf.Length; Render(); }
                     return;
             }
         }
@@ -231,7 +233,7 @@ namespace CorbolPrompt
         {
             if (mode == Mode.Evaluating) return;
             if (c == 'b') { WordLeft(); Render(); }
-            else if (c == 'f') { WordRight(); Render(); }
+            else if (c == 'f') { if (AcceptGhost(true)) return; WordRight(); Render(); }
             else if (c == '\x7f') { DeleteWordBack(); }
         }
 
@@ -241,7 +243,7 @@ namespace CorbolPrompt
             {
                 if (mode == Mode.Evaluating) { Interp.Interrupt = true; return; }
                 if (mode == Mode.Reading) { Interp.Interrupt = true; return; }
-                pos = buf.Length; Render();
+                pos = buf.Length; Render(false);
                 Emit("\x1b[90m^C\x1b[0m\n");
                 buf.Clear(); pos = 0; pending = ""; histIndex = -1;
                 ShowPrompt();
@@ -256,9 +258,9 @@ namespace CorbolPrompt
                 case '\x7f': if (pos > 0) { buf.Remove(--pos, 1); Render(); } return;
                 case '\b': case '\x17': DeleteWordBack(); return;
                 case '\x01': pos = 0; Render(); return;
-                case '\x05': pos = buf.Length; Render(); return;
+                case '\x05': if (AcceptGhost(false)) return; pos = buf.Length; Render(); return;
                 case '\x02': if (pos > 0) pos--; Render(); return;
-                case '\x06': if (pos < buf.Length) pos++; Render(); return;
+                case '\x06': if (AcceptGhost(false)) return; if (pos < buf.Length) pos++; Render(); return;
                 case '\x0b': buf.Length = pos; Render(); return;
                 case '\x15': buf.Remove(0, pos); pos = 0; Render(); return;
                 case '\x0c':   // Ctrl+L: pulisce lo schermo e riscrive la riga
@@ -316,7 +318,7 @@ namespace CorbolPrompt
         {
             if (mode == Mode.Reading)
             {
-                pos = buf.Length; Render();
+                pos = buf.Length; Render(false);
                 Emit("\n");
                 readResult = buf.ToString();
                 buf.Clear(); pos = 0;
@@ -334,7 +336,7 @@ namespace CorbolPrompt
             }
             catch (LispIncomplete) { complete = false; }
             catch { }
-            pos = buf.Length; Render();
+            pos = buf.Length; Render(false);
             Emit("\n");
             buf.Clear(); pos = 0; histIndex = -1;
             if (!complete)
@@ -387,7 +389,7 @@ namespace CorbolPrompt
             if (!lastTab) { lastTab = true; return; }
             // secondo Tab: elenco sotto la riga, poi si riscrive la riga
             int p = pos;
-            pos = buf.Length; Render();
+            pos = buf.Length; Render(false);
             Emit("\n\x1b[90m" + string.Join("  ", names.Take(200)) + (names.Count > 200 ? "  ..." : "") + "\x1b[0m\n");
             Emit(pending.Length > 0 ? PromptCont : Prompt);
             MarkStart();
@@ -406,9 +408,53 @@ namespace CorbolPrompt
 
         // ---------- disegno della riga ----------
 
-        // Riscrive il testo dall'inizio della riga di comando e mette il cursore al suo posto
-        void Render()
+        // → o Fine alla fine della riga: si prende il suggerimento (word: solo fino alla fine della parola)
+        bool AcceptGhost(bool word)
         {
+            if (string.IsNullOrEmpty(ghost) || pos != buf.Length || mode != Mode.Editing) return false;
+            int n = ghost.Length;
+            if (word)
+            {
+                n = 0;
+                while (n < ghost.Length && !IsSymChar(ghost[n])) n++;
+                while (n < ghost.Length && IsSymChar(ghost[n])) n++;
+            }
+            buf.Append(ghost, 0, n);
+            pos = buf.Length;
+            Render();
+            return true;
+        }
+
+        // Il seguito suggerito: l'ultimo comando della cronologia che comincia così, se no il nome di una funzione
+        string Suggest(out string symbolGuess)
+        {
+            symbolGuess = null;
+            if (pos != buf.Length || buf.Length == 0) return null;
+            string text = buf.ToString();
+            int start = pos;
+            while (start > 0 && IsSymChar(buf[start - 1])) start--;
+            if (pos - start >= 2) symbolGuess = Interp.GuessSymbol(text.Substring(start), SpecialForms);
+            if (pending.Length == 0 && text.Trim().Length > 0)
+                for (int i = history.Count - 1; i >= 0 && i >= history.Count - 500; i--)
+                {
+                    string h = history[i].Replace("\r", "").Replace("\n", " ");
+                    if (h.Length > text.Length && h.StartsWith(text, StringComparison.Ordinal)) return h.Substring(text.Length);
+                }
+            return symbolGuess != null ? symbolGuess.Substring(pos - start) : null;
+        }
+
+        // Riscrive il testo dall'inizio della riga di comando e mette il cursore al suo posto.
+        // hints: con il suggerimento in grigio e, sotto, gli argomenti (no quando la riga è finita)
+        void Render(bool hints = true)
+        {
+            hints = hints && mode == Mode.Editing;
+            string guess = null;
+            ghost = hints ? Suggest(out guess) : null;
+            string hint = null; int hlStart = 0, hlLen = 0;
+            if (hints)
+                try { hint = Interp.ArgHint(pending + buf.ToString(0, pos), guess, out hlStart, out hlLen); }
+                catch { hint = null; }
+
             var sb = new StringBuilder();
             long curLine; int cols;
             lock (term.Sync)
@@ -422,7 +468,6 @@ namespace CorbolPrompt
             if (startCol > 0) sb.Append("\x1b[").Append(startCol).Append('C');
             sb.Append("\x1b[J");
             sb.Append(Highlight(buf.ToString()));
-            if (Output != null) Output(sb.ToString());
 
             // posizione del cursore: colonne occupate dal testo prima di pos
             int width = 0;
@@ -430,10 +475,42 @@ namespace CorbolPrompt
             int total = 0;
             for (int i = 0; i < buf.Length; i++) total += Terminal.IsWide(buf[i]) ? 2 : 1;
             long off = startCol + width, endOff = startCol + total;
+            bool atEdge = endOff > 0 && endOff % cols == 0;
+
+            // il suggerimento resta sulla riga dove finisce il testo: non va a capo
+            if (!string.IsNullOrEmpty(ghost) && !atEdge)
+            {
+                int room = cols - (int)(endOff % cols) - 1;
+                var g = new StringBuilder();
+                int w = 0;
+                foreach (char ch in ghost)
+                {
+                    int cw = Terminal.IsWide(ch) ? 2 : 1;
+                    if (w + cw > room) break;
+                    g.Append(ch); w += cw;
+                }
+                if (g.Length > 0) sb.Append("\x1b[90m").Append(g).Append("\x1b[0m");
+            }
+            // il testo finisce proprio a fine riga: la riga sotto, dove può andare il cursore, va creata
+            if (atEdge && off == endOff) sb.Append("\r\n");
+            if (hint != null && cols > 4)
+            {
+                sb.Append("\r\n");
+                if (hint.Length > cols - 1)
+                {
+                    hint = hint.Substring(0, cols - 2) + "…";
+                    if (hlStart >= hint.Length - 1) hlLen = 0;
+                    else if (hlStart + hlLen > hint.Length - 1) hlLen = hint.Length - 1 - hlStart;
+                }
+                if (hlLen > 0)
+                    sb.Append("\x1b[90m").Append(hint, 0, hlStart).Append("\x1b[0;1m").Append(hint, hlStart, hlLen)
+                      .Append("\x1b[0;90m").Append(hint.Substring(hlStart + hlLen)).Append("\x1b[0m");
+                else sb.Append("\x1b[90m").Append(hint).Append("\x1b[0m");
+            }
+            if (Output != null) Output(sb.ToString());
+
             long targetLine = startLine + off / cols;
             int targetCol = (int)(off % cols);
-            // il testo finisce proprio a fine riga: il cursore va all'inizio della riga sotto, che va creata
-            if (off == endOff && endOff > 0 && endOff % cols == 0) Output("\r\n");
             long top;
             lock (term.Sync) top = term.Dropped + term.ScreenTop;
             long row = targetLine - top;

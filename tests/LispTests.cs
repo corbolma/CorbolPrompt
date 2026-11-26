@@ -74,6 +74,7 @@ namespace CorbolPrompt
             Ai();
             Windows();
             GuideExamples();
+            Hints();
             Console.WriteLine(fail == 0 ? "TUTTI OK (" + total + " controlli)" : fail + " FALLITI su " + total);
             return fail == 0 ? 0 : 1;
         }
@@ -486,6 +487,14 @@ namespace CorbolPrompt
             CheckValue("watch: righe in più tagliate", term.ToString().EndsWith("\n1\n2\n\x1b[2m(5 more lines)\x1b[0m\n"), true);
             it.TermRows = 0;
             Check("(let ((n 0)) (every 0 (incf n) (when (= n 3) (return (* n 10)))))", "30");
+            Check("(let ((n 0) (s 0)) (every s (incf n) (when (= n 2) (return n))))", "2");
+            Check("(every #'evenp '(2 4))", "t");
+            Check("(every #'evenp '(2 3))", "nil");
+            Check("(every (lambda (x y) (< x y)) '(1 2) '(3 4))", "t");
+            Check("(let ((p #'oddp)) (every p '(1 3)))", "t");
+            Check("(every :ok '((:ok 1) (:ok 2)))", "t");
+            Check("(notevery #'evenp '(2 3))", "t");
+            Check("(notevery #'evenp '(2 4))", "nil");
         }
 
         // ---------------------------------------------------------------------------
@@ -572,6 +581,15 @@ namespace CorbolPrompt
             CheckValue("ai-defun: sh non eseguito", term.ToString().Contains("NON-DEVE-PARTIRE\n"), false);
             CheckValue("ai-defun: avviso per le funzioni di sistema", term.ToString().Contains("it uses sh: not tried on the examples"), true);
             Check("(ai-defun x () \"d\" :examples (a))", "ERRORE: ai-defun: gli esempi vanno a coppie: (chiamata risultato-atteso ...)");
+            // every di Common Lisp: si prova sugli esempi; every che ripete: no
+            Model("(defun tutti-pari (l) (every #'evenp l))");
+            term.Clear();
+            Check("(ai-defun tutti-pari (l) \"tutti pari\" :examples ((tutti-pari '(2 4)) t))", "tutti-pari");
+            CheckValue("ai-defun: every di Common Lisp provata", term.ToString().Contains("tried on 1 examples"), true);
+            Model("(defun ripeti () (every 1 (print 1)))");
+            term.Clear();
+            Check("(ai-defun ripeti () \"ripete\" :examples ((ripeti) nil))", "ripeti");
+            CheckValue("ai-defun: every che ripete non provata", term.ToString().Contains("it uses every: not tried on the examples"), true);
 
             // why
             it.LastError = null;
@@ -611,6 +629,71 @@ namespace CorbolPrompt
             // il messaggio di PowerShell cambia con la lingua di Windows: lo si chiede a PowerShell stesso
             object missing = it.EvalString("(:m (car (ps \"try { Get-Item C:/non/esiste/proprio } catch { [pscustomobject]@{M=$_.Exception.Message} }\")))");
             Check("(ps \"Get-Item C:/non/esiste/proprio\")", "ERRORE: ps: " + missing);
+        }
+
+        // ---------------------------------------------------------------------------
+        // Aiuto mentre si scrive: la riga degli argomenti e il nome suggerito
+        // risultato: la firma con l'argomento evidenziato tra [ ], o "-" se non c'è aiuto
+        static string Hint(string text)
+        {
+            int s, n;
+            string h = it.ArgHint(text, it.GuessSymbol(LastWord(text), null), out s, out n);
+            if (h == null) return "-";
+            return n > 0 ? h.Substring(0, s) + "[" + h.Substring(s, n) + "]" + h.Substring(s + n) : h;
+        }
+
+        static string LastWord(string t)
+        {
+            int i = t.Length;
+            while (i > 0 && !char.IsWhiteSpace(t[i - 1]) && "()'\"".IndexOf(t[i - 1]) < 0) i--;
+            return t.Substring(i);
+        }
+
+        static void CheckHint(string text, string expected)
+        {
+            total++;
+            string got;
+            try { got = Hint(text); } catch (Exception e) { got = "ERRORE: " + e.Message; }
+            if (got == expected) return;
+            fail++;
+            Console.WriteLine("FALLITO [" + section + "] aiuto per " + text.Replace("\n", "\\n"));
+            Console.WriteLine("    dato:   " + got);
+            Console.WriteLine("    atteso: " + expected);
+        }
+
+        static void Hints()
+        {
+            Section("aiuto mentre si scrive");
+            CheckHint("(mapcar ", "(mapcar [function] list &rest lists)");
+            CheckHint("(mapcar #'1+ ", "(mapcar function [list] &rest lists)");
+            CheckHint("(mapcar #'1+ '(1 2) '(3", "(mapcar function list &rest [lists])");
+            CheckHint("(mapc", "(mapc function list &rest lists)");
+            CheckHint("(mapca", "(mapcan function list &rest lists)");
+            CheckHint("(if (> x 1) ", "(if test [then] &optional else)");
+            CheckHint("(if (> x 1) 2 ", "(if test then &optional [else])");
+            CheckHint("(let ((x ", "(let [((var value)...)] &body body)");
+            CheckHint("(let ((x 1)) ", "(let ((var value)...) &body [body])");
+            CheckHint("(member 3 l :te", "(member item list &key [test] key)");
+            CheckHint("(member 3 l :test ", "(member item list &key [test] key)");
+            CheckHint("(setq a 1 b ", "(setq var [value] ...)");
+            CheckHint("(setq a 1 ", "(setq [var] value ...)");
+            CheckHint("(cond (a 1) ", "(cond [(test form...)...])");
+            CheckHint("(format t \"(ciao ", "-");
+            CheckHint("'(mapcar ", "-");
+            CheckHint("(list 1 ; (mapcar ", "-");
+            CheckHint("(+ 1 (* 2 ", "(* &rest [numbers])");
+            CheckHint("(+ 1 (* 2 3) ", "(+ &rest [numbers])");
+            CheckHint("(nonesiste 1 ", "-");
+            Run("(defun area (base altezza &optional (scala 1) &key unita) (* base altezza scala))");
+            CheckHint("(area 2 ", "(area base [altezza] &optional scala &key unita)");
+            Run("(defmacro con-tempo (nome &body corpo) `(progn ,@corpo))");
+            CheckHint("(con-tempo x ", "(con-tempo nome &rest [corpo])");
+            CheckHint("(cadr ", "(cadr [x])");
+            Check("(progn (defun pippo-unico-123 () 1) 'ok)", "ok");
+            total++;
+            if (it.GuessSymbol("pippo-un", null) != "pippo-unico-123") { fail++; Console.WriteLine("FALLITO [" + section + "] GuessSymbol pippo-un"); }
+            total++;
+            if (it.GuessSymbol("mapc", null) != "mapcan") { fail++; Console.WriteLine("FALLITO [" + section + "] GuessSymbol mapc: " + it.GuessSymbol("mapc", null)); }
         }
 
         // ---------------------------------------------------------------------------

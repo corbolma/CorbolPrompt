@@ -17,6 +17,7 @@ fact
 | Invio | valuta; se le parentesi non sono chiuse si continua sulla riga sotto (prompt `..`) |
 | ↑ ↓ | cronologia (salvata tra una sessione e l'altra) |
 | Tab | completa il nome; due Tab elencano le possibilità |
+| → o Fine (alla fine della riga) | accetta il seguito suggerito in grigio: l'ultimo comando della cronologia che comincia così, o il nome di una funzione; Ctrl+→ / Alt+F ne prende una parola |
 | Ctrl+C | interrompe la valutazione (anche un ciclo infinito o un comando di sistema); mentre scrivi annulla la riga |
 | Ctrl+L | pulisce lo schermo |
 | Ctrl+A / Ctrl+E, Home / Fine | inizio / fine riga |
@@ -301,7 +302,7 @@ Sicurezza: `ai-defun` accetta solo una `defun` con il nome giusto. Se il codice 
 | `(http-post url corpo)` | come `http-get`, con un corpo: una stringa va così com'è, un dato (plist, lista) va come JSON |
 | `(http-json url)`, `(http-json url :body dato)` | la risposta letta come `json-parse`; con `:body` è una POST |
 | `(watch secondi forma...)` | ripete le forme e **ridisegna sul posto** quello che stampano e il risultato (come tabella, se lo è), finché non premi Ctrl+C; `:times n` si ferma dopo n volte, `(return x)` esce con `x` |
-| `(every secondi forma...)` | ripete le forme ogni tanti secondi, senza ridisegnare: per controlli e avvisi; Ctrl+C o `(return x)` per finire |
+| `(every secondi forma...)` | ripete le forme ogni tanti secondi, senza ridisegnare: per controlli e avvisi; Ctrl+C o `(return x)` per finire. Se il primo argomento non è un numero, `every` è quella di Common Lisp: `(every #'evenp lista)` |
 | `(choose-file)` | la finestra per scegliere un file: il percorso, o `nil` se annulli; `:title`, `:filter "*.csv"`, `:save t` per salvare, `:multiple t` per una lista di file |
 | `(choose-folder)` | la finestra per scegliere una cartella |
 

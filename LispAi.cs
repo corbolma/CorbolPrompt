@@ -31,7 +31,7 @@ namespace CorbolPrompt
             "sh", "pwsh", "run", "run-lines", "ps", "cd", "delete-file", "write-file", "append-file", "with-open-file", "open",
             "mkdir", "setenv", "load", "eval", "exit", "quit", "intern", "read-from-string", "symbol-function", "fdefinition",
             "ask", "ask-data", "ai-defun", "why",
-            "clipboard", "set-clipboard", "notify", "http-get", "http-post", "http-json", "watch", "watch-fn", "every",
+            "clipboard", "set-clipboard", "notify", "http-get", "http-post", "http-json", "watch", "watch-fn",
             "choose-file", "choose-folder"
         };
 
@@ -156,6 +156,7 @@ namespace CorbolPrompt
                 {
                     Eval(form, Global);   // definisce soltanto: il corpo non viene eseguito
                     var sys = UsedSymbols(form).Where(s => systemFns.Contains(s.Name)).Select(s => s.Name).Distinct().ToList();
+                    if (RepeatingEvery(form)) sys.Add("every");
                     if (sys.Count > 0 && pairs.Count > 0) untested = true;
                     else problem = RunExamples(pairs);
                     if (problem == null)
@@ -195,6 +196,25 @@ namespace CorbolPrompt
                 if (!same) return call + " returns " + Printer.Print(got, true) + ", but it should return " + Printer.Print(expected, true) + ".";
             }
             return null;
+        }
+
+        // (every secondi ...) ripete per sempre; (every #'pred lista) è la every di Common Lisp.
+        // Se il primo argomento non è chiaramente una funzione si considera la forma che ripete.
+        static bool RepeatingEvery(object x)
+        {
+            var c = x as Cons;
+            if (c == null) return false;
+            var head = c.Car as Sym;
+            if (head != null && head.Name == "every")
+            {
+                var arg = c.Cdr is Cons ? ((Cons)c.Cdr).Car : null;
+                var ac = arg as Cons;
+                var argHead = ac != null ? ac.Car as Sym : null;
+                bool isFn = (argHead != null && (argHead.Name == "function" || argHead.Name == "lambda"))
+                            || (arg is Sym && ((Sym)arg).IsKeyword);
+                if (!isFn) return true;
+            }
+            return RepeatingEvery(c.Car) || RepeatingEvery(c.Cdr);
         }
 
         static IEnumerable<Sym> UsedSymbols(object x)

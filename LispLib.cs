@@ -388,7 +388,8 @@ namespace CorbolPrompt
             Def("position-if", 2, -1, a => { var k = KeyFn(a, 2); var l = Seq(a[1]); int i = l.FindIndex(x => Truthy(Call(a[0], k(x)))); return i < 0 ? null : (object)(long)i; });
             Def("count", 2, -1, a => { var t = TestOf(a, 2); return (long)Seq(a[1]).Count(x => t(a[0], x)); });
             Def("count-if", 2, -1, a => { var k = KeyFn(a, 2); return (long)Seq(a[1]).Count(x => Truthy(Call(a[0], k(x)))); });
-            Def("every", 2, -1, a =>
+            // every-fn: la every di Common Lisp; (every ...) è una macro (LispWin.cs) che la usa se il primo argomento non è un numero
+            Def("every-fn", 2, -1, a =>
             {
                 var lists = a.Skip(1).Select(Seq).ToList();
                 int n = lists.Min(l => l.Count);
@@ -403,7 +404,7 @@ namespace CorbolPrompt
                 return null;
             });
             Def("notany", 2, -1, a => Bool(!Truthy(Call(Intern("some"), a))));
-            Def("notevery", 2, -1, a => Bool(!Truthy(Call(Intern("every"), a))));
+            Def("notevery", 2, -1, a => Bool(!Truthy(Call(Intern("every-fn"), a))));
             Def("sort", 2, -1, a => SortSeq(a));
             Def("stable-sort", 2, -1, a => SortSeq(a));
             Def("subseq", 2, 3, a =>
@@ -1437,7 +1438,8 @@ Sistema:
   (run ""git status"")  restituisce l'output come stringa    (run-lines ""..."") come lista di righe
   (cd ""..""), (pwd), (ls), (read-file ""f.txt""), (write-file ""f.txt"" ""testo""), (load ""script.lisp"")
 Altro: (apropos ""str"") cerca funzioni, (time (forma)), (clear), (exit).
-Tasti: frecce su/giù = cronologia, Tab = completa, Ctrl+C = interrompe, Ctrl+L = pulisce lo schermo.
+Tasti: frecce su/giù = cronologia, Tab = completa, → = accetta il suggerimento grigio, Ctrl+C = interrompe, Ctrl+L = pulisce lo schermo.
+Mentre scrivi, sotto la riga compaiono gli argomenti della funzione; quello che stai scrivendo è in chiaro.
 ",
 @"CorbolPrompt Lisp: a small Common Lisp. Examples:
   (+ 1 2 3)                         (defun square (x) (* x x))
@@ -1449,7 +1451,8 @@ System:
   (run ""git status"")  returns the output as a string    (run-lines ""..."") as a list of lines
   (cd ""..""), (pwd), (ls), (read-file ""f.txt""), (write-file ""f.txt"" ""text""), (load ""script.lisp"")
 More: (apropos ""str"") finds functions, (time (form)), (clear), (exit).
-Keys: up/down arrows = history, Tab = complete, Ctrl+C = interrupt, Ctrl+L = clear the screen.
+Keys: up/down arrows = history, Tab = complete, → = accept the grey suggestion, Ctrl+C = interrupt, Ctrl+L = clear the screen.
+While you type, the function's arguments appear below the line; the one you are typing is highlighted.
 ");
         }
     }

@@ -75,8 +75,12 @@ namespace CorbolPrompt
   (let ((times nil))
     (when (eq (car body) :times) (setq times (cadr body) body (cddr body)))
     `(block nil (watch-fn ,seconds ,times (lambda () ,@body)))))
-(defmacro every (seconds &rest body)
-  `(block nil (loop (progn ,@body) (sleep ,seconds))))");
+(defmacro every (seconds-or-predicate &rest body)
+  (let ((first (gensym)))
+    `(let ((,first ,seconds-or-predicate))
+       (if (numberp ,first)
+           (block nil (loop (progn ,@body) (sleep ,first)))
+           (every-fn ,first ,@body)))))");
 
             // ---- scegliere file e cartelle ----
             // (choose-file [:title "..."] [:filter "*.csv"] [:save t] [:multiple t]) → il percorso, o nil se si annulla

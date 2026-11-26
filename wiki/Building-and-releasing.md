@@ -18,6 +18,7 @@ creates `CorbolPrompt.exe` in the project folder. If the `corbolprompt.ico` icon
 | `Tabs.cs` | tab bar |
 | `Lisp.cs`, `LispLib.cs`, `LispData.cs`, `LispAi.cs`, `LispWin.cs` | the Lisp interpreter and its functions (`LispData.cs`: JSON, `ps`, tables, charts; `LispAi.cs`: `ask`, `ai-defun`, `why`; `LispWin.cs`: clipboard, `notify`, `http-get`, `watch`, `choose-file`) |
 | `LispRepl.cs` | the command line of the Lisp tab |
+| `LispHelp.cs` | help while typing: function arguments and the suggested name |
 | `Assistant.cs` | instructions for the assistant and reading its answers (code blocks → ▶ buttons) |
 | `Ai.cs`, `AiLocal.cs` | assistant services (Claude Code, API, OpenAI-compatible, local) and settings |
 | `Favorites.cs` | favorites and the window to manage them |
